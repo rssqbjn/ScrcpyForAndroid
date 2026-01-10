@@ -1,0 +1,12 @@
+
+pluginManagement {
+    repositories {
+        google()
+        mavenCentral()
+        gradlePluginPortal()
+    }
+    plugins {
+    }
+}
+
+include ':server', ':app'
