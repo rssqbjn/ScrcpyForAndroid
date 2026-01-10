@@ -1,0 +1,66 @@
+
+
+apply plugin: 'com.android.application'
+android {
+    namespace 'org.server.scrcpy'
+
+    compileSdkVersion 31
+    defaultConfig {
+        applicationId "org.server.scrcpy"
+        minSdkVersion 21
+        targetSdkVersion 31
+        versionCode 3
+        versionName "1.2"
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+
+    }
+
+    buildFeatures{
+        aidl true
+        buildConfig true
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+        }
+    }
+
+    tasks.register('copyServer', Copy) {
+        def buildType = gradle.startParameter.taskNames.any { it.endsWith('Release') } ? 'Release' : 'Debug'
+        dependsOn("assemble${buildType}")
+
+        def release_file = 'build/outputs/apk/release/server-release-unsigned.apk'
+        def debug_file = 'build/outputs/apk/debug/server-debug.apk'
+        def file_dest = '../app/src/main/assets/'
+
+        if (buildType == "Debug") {
+            from file(debug_file)
+            into file(file_dest)
+        } else {
+            from file(release_file)
+            into file(file_dest)
+        }
+        rename { fileName ->
+            'scrcpy-server.jar'
+        }
+
+    }
+    tasks.register('deleteServer', Delete) {
+        delete "../app/src/main/assets/scrcpy-server.jar"
+    }
+
+//    tasks.whenTaskAdded { task ->
+//        task.finalizedBy(copyServer)
+//    }
+//    afterEvaluate {
+//        packageRelease.finalizedBy(copyServer)
+//    }
+//    afterEvaluate {
+//        packageDebug.finalizedBy(copyServer)
+//    }
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.13.2'
+}

@@ -1,0 +1,24 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- Base application theme. -->
+    <style name="AppTheme" parent="android:Theme.DeviceDefault.Light.NoActionBar">
+        <!-- Customize your theme here. -->
+        <!--        <item name="android:textColor">@color/white</item>-->
+        <item name="android:textColorHint">#A8AAB5</item>
+        <item name="android:colorPrimaryDark" tools:ignore="NewApi">#3C93F0
+        </item>
+        <item name="android:spinnerItemStyle">@style/mySpinnerItemStyle</item>
+        <item name="android:spinnerDropDownItemStyle">@style/mySpinnerDropDownItemStyle</item>
+        <item name="android:windowBackground">@color/theme_color</item>
+    </style>
+
+    <style name="mySpinnerItemStyle" parent="@android:style/Widget.Holo.DropDownItem.Spinner">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:gravity">center</item>
+    </style>
+
+    <style name="mySpinnerDropDownItemStyle" parent="@android:style/Widget.Holo.DropDownItem.Spinner">
+        <item name="android:textColor">@color/white</item>
+        <item name="android:gravity">center</item>
+    </style>
+</resources>
