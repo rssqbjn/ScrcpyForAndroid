@@ -12,7 +12,7 @@
 
 ## Download
 
-[scrcpy-release.apk](https://github.com/zwc456baby/ScrcpyForAndroid/releases)
+[scrcpy-release.apk](https://github.com/rssqbjn/ScrcpyForAndroid/releases)
 
 
 ![img.png](img.png)
