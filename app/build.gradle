@@ -6,10 +6,10 @@ android {
     namespace 'xyz.aicy.scrcpy'
     flavorDimensions = ["default"]
 
-    compileSdkVersion 31
+    compileSdkVersion 33
     defaultConfig {
         minSdkVersion 21
-        targetSdkVersion 31
+        targetSdkVersion 33
         versionCode 9
         versionName "1.1.0"
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
