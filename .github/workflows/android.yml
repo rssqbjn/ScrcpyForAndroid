@@ -3,8 +3,13 @@ name: Android CI
 on:
   push:
     branches: [ "main" ]
+    tags:
+      - "v*"
   pull_request:
     branches: [ "main" ]
+
+permissions:
+  contents: write
 
 jobs:
   build:
@@ -42,3 +47,10 @@ jobs:
         path: |
           app/build/outputs/apk/scrcpy/release/*.apk
         retention-days: 90  # Sets the artifact retention period to 90 days.
+
+    - name: Publish GitHub Release
+      if: startsWith(github.ref, 'refs/tags/')
+      uses: softprops/action-gh-release@v2
+      with:
+        name: ${{ github.ref_name }}
+        files: app/build/outputs/apk/scrcpy/release/*.apk
