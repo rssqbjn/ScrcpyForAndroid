@@ -13,6 +13,7 @@
     <string name="switch0">观看模式 (不进行控制)</string>
     <string name="switch1">底部控制按钮 (返回键)</string>
     <string name="switch_screen_off">息屏控制</string>
+    <string name="switch_audio_forward">音频转发</string>
     <string name="connect_tips">Tips: 需要开启手机的无线调试\n\t\t重置adb端口命令:adb tcpip 5555</string>
     <string name="please_wait">连接中 …</string>
 

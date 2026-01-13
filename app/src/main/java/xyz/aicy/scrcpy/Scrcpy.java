@@ -48,6 +48,7 @@ public class Scrcpy extends Service {
     // private byte[] event = null;
     private VideoDecoder videoDecoder;
     private AudioDecoder audioDecoder;
+    private boolean audioEnabled = true;
     private final AtomicBoolean updateAvailable = new AtomicBoolean(false);
     private final IBinder mBinder = new MyServiceBinder();
     private boolean first_time = true;
@@ -73,19 +74,26 @@ public class Scrcpy extends Service {
         this.surface = NewSurface;
 
         videoDecoder.start();
-        audioDecoder.start();
+        if (audioEnabled && audioDecoder != null) {
+            audioDecoder.start();
+        }
 
 
         updateAvailable.set(true);
 
     }
 
-    public void start(Surface surface, String serverAdr, int screenHeight, int screenWidth, int delay) {
+    public void start(Surface surface, String serverAdr, int screenHeight, int screenWidth, int delay, boolean audioEnabled) {
+        this.audioEnabled = audioEnabled;
         this.videoDecoder = new VideoDecoder();
         videoDecoder.start();
 
-        this.audioDecoder = new AudioDecoder();
-        audioDecoder.start();
+        if (audioEnabled) {
+            this.audioDecoder = new AudioDecoder();
+            audioDecoder.start();
+        } else {
+            this.audioDecoder = null;
+        }
 
         String[] serverInfo = Util.getServerHostAndPort(serverAdr);
         this.serverHost = serverInfo[0];
@@ -241,8 +249,12 @@ public class Scrcpy extends Service {
 
         videoDecoder = new VideoDecoder();
         videoDecoder.start();
-        audioDecoder = new AudioDecoder();
-        audioDecoder.start();
+        if (audioEnabled) {
+            audioDecoder = new AudioDecoder();
+            audioDecoder.start();
+        } else {
+            audioDecoder = null;
+        }
 
         DataInputStream mediaInputStream = null;
         DataOutputStream controlOutputStream = null;
@@ -456,6 +468,9 @@ public class Scrcpy extends Service {
                         }
                         first_time = false;
                     } else if (MediaPacket.Type.getType(packet[0]) == MediaPacket.Type.AUDIO) {
+                        if (!audioEnabled || audioDecoder == null) {
+                            continue;
+                        }
                         AudioPacket audioPacket = AudioPacket.readHead(packet);
                         // byte[] data = audioPacket.data;
                         if (audioPacket.flag == AudioPacket.Flag.CONFIG) {

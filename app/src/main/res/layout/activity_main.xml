@@ -288,6 +288,20 @@
                 android:textColor="@color/white"
                 android:textSize="15sp" />
 
+            <Switch
+                android:id="@+id/switch_audio_forward"
+                android:layout_width="match_parent"
+                android:layout_height="52dp"
+                android:layout_marginBottom="12dp"
+                android:layout_weight="1"
+                android:background="@drawable/glassmorphic_background"
+                android:gravity="center_vertical"
+                android:paddingLeft="16dp"
+                android:paddingRight="16dp"
+                android:text="@string/switch_audio_forward"
+                android:textColor="@color/white"
+                android:textSize="15sp" />
+
 
             <Button
                 android:id="@+id/button_start"

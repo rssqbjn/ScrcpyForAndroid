@@ -17,7 +17,7 @@ public final class Server {
 
         final Device device = new Device(options);
         try (DroidConnection connection = DroidConnection.open(ip)) {
-            ScreenEncoder screenEncoder = new ScreenEncoder(options.getBitRate());
+            ScreenEncoder screenEncoder = new ScreenEncoder(options.getBitRate(), options.isAudioEnabled());
 
             // asynchronous
             startEventController(device, connection);
@@ -76,6 +76,12 @@ public final class Server {
         // use "adb forward" instead of "adb tunnel"? (so the server must listen)
         boolean tunnelForward = Boolean.parseBoolean(args[3]);
         options.setTunnelForward(tunnelForward);
+
+        if (args.length < 5) {
+            return options;
+        }
+        boolean audioEnabled = Boolean.parseBoolean(args[4]);
+        options.setAudioEnabled(audioEnabled);
         return options;
     }
 
@@ -100,4 +106,3 @@ public final class Server {
         scrcpy(options);
     }
 }
-

@@ -36,11 +36,17 @@ public class ScreenEncoder implements Device.RotationListener {
     private int bitRate;
     private int frameRate;
     private int iFrameInterval;
+    private boolean audioEnabled = true;
 
     public ScreenEncoder(int bitRate, int frameRate, int iFrameInterval) {
         this.bitRate = bitRate;
         this.frameRate = frameRate;
         this.iFrameInterval = iFrameInterval;
+    }
+
+    public ScreenEncoder(int bitRate, boolean audioEnabled) {
+        this(bitRate, DEFAULT_FRAME_RATE, DEFAULT_I_FRAME_INTERVAL);
+        this.audioEnabled = audioEnabled;
     }
 
     public ScreenEncoder(int bitRate) {
@@ -141,7 +147,9 @@ public class ScreenEncoder implements Device.RotationListener {
         }
         outputStream.write(array, 0, array.length);   // Sending device resolution
 
-        startAudioCapture(outputStream);  // start audio capture
+        if (audioEnabled) {
+            startAudioCapture(outputStream);  // start audio capture
+        }
 
         MediaFormat format = createFormat(bitRate, frameRate, iFrameInterval);
         device.setRotationListener(this);

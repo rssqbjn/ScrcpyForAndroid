@@ -59,7 +59,7 @@ public class ScrcpyHost implements Scrcpy.ServiceCallbacks {
             scrcpy.setServiceCallbacks(ScrcpyHost.this);
             serviceBound = true;
             if (first_time) {
-                scrcpy.start(surface, serverAdr, screenHeight, screenWidth, 50);
+                scrcpy.start(surface, serverAdr, screenHeight, screenWidth, 50, true);
                 int count = 100;
                 while (count != 0 && !scrcpy.check_socket_connection()) {
                     count--;
@@ -175,7 +175,7 @@ public class ScrcpyHost implements Scrcpy.ServiceCallbacks {
                     serverPort,
                     localForwardPort,
                     Scrcpy.LOCAL_IP,
-                    videoBitrate, Math.max(screenHeight, screenWidth)) == 0) {
+                    videoBitrate, Math.max(screenHeight, screenWidth), true) == 0) {
                 start_screen_copy_magic();
             } else {
                 Toast.makeText(context, "Network OR ADB connection failed", Toast.LENGTH_SHORT).show();

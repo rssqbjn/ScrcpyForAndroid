@@ -4,6 +4,7 @@ public class Options {
     private int maxSize;
     private int bitRate;
     private boolean tunnelForward;
+    private boolean audioEnabled = true;
 
     public int getMaxSize() {
         return maxSize;
@@ -27,5 +28,13 @@ public class Options {
 
     public void setTunnelForward(boolean tunnelForward) {
         this.tunnelForward = tunnelForward;
+    }
+
+    public boolean isAudioEnabled() {
+        return audioEnabled;
+    }
+
+    public void setAudioEnabled(boolean audioEnabled) {
+        this.audioEnabled = audioEnabled;
     }
 }

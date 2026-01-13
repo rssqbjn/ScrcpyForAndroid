@@ -28,10 +28,21 @@ public class SendCommands {
     }
 
     public int SendAdbCommands(Context context, final String ip, int port, int forwardport, String localip, int bitrate, int size) {
-        return this.SendAdbCommands(context, null, ip, port, forwardport, localip, bitrate, size);
+        return this.SendAdbCommands(context, null, ip, port, forwardport, localip, bitrate, size, true);
     }
 
-    public int SendAdbCommands(Context context, final byte[] fileBase64, final String ip, int port, int forwardport, String localip, int bitrate, int size) {
+    public int SendAdbCommands(Context context, final String ip, int port, int forwardport, String localip, int bitrate, int size,
+                               boolean audioEnabled) {
+        return this.SendAdbCommands(context, null, ip, port, forwardport, localip, bitrate, size, audioEnabled);
+    }
+
+    public int SendAdbCommands(Context context, final byte[] fileBase64, final String ip, int port, int forwardport, String localip, int bitrate,
+                               int size) {
+        return this.SendAdbCommands(context, fileBase64, ip, port, forwardport, localip, bitrate, size, true);
+    }
+
+    public int SendAdbCommands(Context context, final byte[] fileBase64, final String ip, int port, int forwardport, String localip, int bitrate,
+                               int size, boolean audioEnabled) {
         this.context = context;
         status = 1;
         String[] commands = new String[]{
@@ -43,7 +54,9 @@ public class SendCommands {
                 "org.server.scrcpy.Server",
                 "/" + localip,
                 Long.toString(size),
-                Long.toString(bitrate) + ";"
+                Long.toString(bitrate),
+                "false",
+                Boolean.toString(audioEnabled) + ";"
         };
         ThreadUtils.execute(() -> {
             try {

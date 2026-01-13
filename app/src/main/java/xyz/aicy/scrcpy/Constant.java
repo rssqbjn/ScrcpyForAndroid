@@ -5,6 +5,7 @@ public class Constant {
     public static final String CONTROL_NAV = "control_nav";
     public static final String CONTROL_NO = "no_control";
     public static final String CONTROL_SCREEN_OFF = "control_screen_off";
+    public static final String CONTROL_AUDIO = "control_audio";
     public static final String CONTROL_REMOTE_ADDR = "control_remote_addr";
 
     public static final String PREFERENCE_SPINNER_RESOLUTION = "spinner_resolution";

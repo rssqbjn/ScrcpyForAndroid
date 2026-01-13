@@ -96,8 +96,9 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                 if (!Progress.isShowing()) {
                     Progress.showDialog(MainActivity.this, getString(R.string.please_wait));
                 }
+                boolean audioEnabled = PreUtils.get(context, Constant.CONTROL_AUDIO, true);
                 scrcpy.start(surface, Scrcpy.LOCAL_IP + ":" + Scrcpy.LOCAL_FORWART_PORT,
-                        screenHeight, screenWidth, delayControl);
+                        screenHeight, screenWidth, delayControl, audioEnabled);
                 ThreadUtils.workPost(() -> {
                     int count = 50;
                     while (count > 0 && !scrcpy.check_socket_connection()) {
@@ -306,6 +307,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         final Switch aSwitch0 = findViewById(R.id.switch0);
         final Switch aSwitch1 = findViewById(R.id.switch1);
         final Switch switchScreenOff = findViewById(R.id.switch_screen_off);
+        final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
         String historySpServerAdr = PreUtils.get(context, Constant.CONTROL_REMOTE_ADDR, "");
         if (TextUtils.isEmpty(historySpServerAdr)) {
             String[] historyList = getHistoryList();
@@ -318,6 +320,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         aSwitch0.setChecked(PreUtils.get(context, Constant.CONTROL_NO, false));
         aSwitch1.setChecked(PreUtils.get(context, Constant.CONTROL_NAV, false));
         switchScreenOff.setChecked(PreUtils.get(context, Constant.CONTROL_SCREEN_OFF, false));
+        switchAudioForward.setChecked(PreUtils.get(context, Constant.CONTROL_AUDIO, true));
         setSpinner(R.array.options_resolution_values, R.id.spinner_video_resolution, Constant.PREFERENCE_SPINNER_RESOLUTION);
         setSpinner(R.array.options_bitrate_keys, R.id.spinner_video_bitrate, Constant.PREFERENCE_SPINNER_BITRATE);
         setSpinner(R.array.options_delay_keys, R.id.delay_control_spinner, Constant.PREFERENCE_SPINNER_DELAY);
@@ -469,9 +472,12 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         boolean nav = a_Switch1.isChecked();
         final Switch switchScreenOff = findViewById(R.id.switch_screen_off);
         boolean screenOff = switchScreenOff.isChecked();
+        final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
+        boolean audioForward = switchAudioForward.isChecked();
         PreUtils.put(context, Constant.CONTROL_NO, no_control);
         PreUtils.put(context, Constant.CONTROL_NAV, nav);
         PreUtils.put(context, Constant.CONTROL_SCREEN_OFF, screenOff);
+        PreUtils.put(context, Constant.CONTROL_AUDIO, audioForward);
 
         final String[] videoResolutions = getResources().getStringArray(R.array.options_resolution_values)[videoResolutionSpinner.getSelectedItemPosition()].split("x");
         screenHeight = Integer.parseInt(videoResolutions[0]);
@@ -796,11 +802,12 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                         Log.e("Scrcpy", "Error closing streams: " + e.getMessage());
                     }
                 }
+                boolean audioEnabled = PreUtils.get(context, Constant.CONTROL_AUDIO, true);
                 if (sendCommands.SendAdbCommands(context, serverHost,
                         serverPort,
                         localForwardPort,
                         Scrcpy.LOCAL_IP,
-                        videoBitrate, Math.max(screenHeight, screenWidth)) == 0) {
+                        videoBitrate, Math.max(screenHeight, screenWidth), audioEnabled) == 0) {
                     ThreadUtils.post(() -> {
                         if (!MainActivity.this.isFinishing()) {
                             // 进入主线程
