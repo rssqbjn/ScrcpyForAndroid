@@ -166,6 +166,9 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         if (scrcpy != null) {
             scrcpy = null;
         }
+        if (userDisconnect && !resumeScrcpy) {
+            PreUtils.put(context, Constant.CONTROL_AUTO_RECONNECT, false);
+        }
         // 退出连接，需要处理额外的事件
         connectExitExt(userDisconnect);
     }
@@ -228,7 +231,9 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         outState.putBoolean("landscape", landscape);
         outState.putBoolean("headlessMode", headlessMode);  // 第二次进入时，intent会被重置，需要保存状态
         // 小窗模式、半屏模式切换避免恢复横竖屏，会导致黑屏（因为scrcpy恢复的resume只允许一次连接）
-        // outState.putBoolean("resumeScrcpy", resumeScrcpy);
+        if (!isChangingConfigurations()) {
+            outState.putBoolean("resumeScrcpy", resumeScrcpy);
+        }
         outState.putInt("screenHeight", screenHeight);
         outState.putInt("screenWidth", screenWidth);
     }
@@ -656,7 +661,10 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         super.onPause();
         if (serviceBound) {
             scrcpy.pause();
-            resumeScrcpy = true;
+            if (!isChangingConfigurations()) {
+                resumeScrcpy = true;
+                PreUtils.put(context, Constant.CONTROL_AUTO_RECONNECT, true);
+            }
             // 返回到主页面，属于用户主动断开场景
             showMainView(true);
             first_time = true;
@@ -681,8 +689,10 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                 scrcpy.resume();
             }
         }
-        if (resumeScrcpy && !result_of_Rotation) {
+        boolean shouldReconnect = resumeScrcpy || PreUtils.get(context, Constant.CONTROL_AUTO_RECONNECT, false);
+        if (shouldReconnect && !result_of_Rotation) {
             resumeScrcpy = false;
+            PreUtils.put(context, Constant.CONTROL_AUTO_RECONNECT, false);
             connectScrcpyServer(PreUtils.get(context, Constant.CONTROL_REMOTE_ADDR, ""));
         }
         resumeScrcpy = false;  // 两处都要resumeScrcpy设置为false
