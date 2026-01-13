@@ -107,6 +107,7 @@ public class SendCommands {
         // 开启本地端口 forward 转发
         Log.i("Scrcpy", "开启本地端口转发");
         App.adbCmd("-s", ip + ":" + port, "forward", "tcp:" + serverport, "tcp:" + 7007);
+        App.adbCmd("-s", ip + ":" + port, "forward", "tcp:" + (serverport + 1), "tcp:" + 7008);
 
         status = 0;
         // 执行启动命令

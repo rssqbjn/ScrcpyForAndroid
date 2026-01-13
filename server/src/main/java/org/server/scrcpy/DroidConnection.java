@@ -11,22 +11,24 @@ import java.net.Socket;
 
 public final class DroidConnection implements Closeable {
 
+    public static final int MEDIA_PORT = 7007;
+    public static final int CONTROL_PORT = 7008;
 
-    private static Socket socket = null;
-    private OutputStream outputStream;
-    private InputStream inputStream;
+    private Socket mediaSocket;
+    private Socket controlSocket;
+    private OutputStream mediaOutputStream;
+    private InputStream controlInputStream;
 
-    private DroidConnection(Socket socket) throws IOException {
-        this.socket = socket;
-
-        inputStream = socket.getInputStream();
-        outputStream = socket.getOutputStream();
+    private DroidConnection(Socket mediaSocket, Socket controlSocket) throws IOException {
+        this.mediaSocket = mediaSocket;
+        this.controlSocket = controlSocket;
+        this.mediaOutputStream = mediaSocket.getOutputStream();
+        this.controlInputStream = controlSocket.getInputStream();
     }
 
-
-    private static Socket listenAndAccept() throws IOException {
-        ServerSocket serverSocket = new ServerSocket(7007);
-        Socket sock = null;
+    private static Socket listenAndAccept(int port) throws IOException {
+        ServerSocket serverSocket = new ServerSocket(port);
+        Socket sock;
         try {
             sock = serverSocket.accept();
         } finally {
@@ -36,30 +38,43 @@ public final class DroidConnection implements Closeable {
     }
 
     public static DroidConnection open(String ip) throws IOException {
+        Socket media = listenAndAccept(MEDIA_PORT);
+        if (!media.getInetAddress().toString().equals(ip)) {
+            Ln.w("media socket connect address != " + ip);
+        }
 
-        socket = listenAndAccept();
-        DroidConnection connection = null;
-//        if (socket.getInetAddress().toString().equals(ip)) {
-//            connection = new DroidConnection(socket);
-//        }
-        if (!socket.getInetAddress().toString().equals(ip)) {
-            Ln.w("socket connect address != " + ip);
+        Socket control = listenAndAccept(CONTROL_PORT);
+        if (!control.getInetAddress().toString().equals(ip)) {
+            Ln.w("control socket connect address != " + ip);
         }
-        // 判断 socket 有一个正确的地址
-        if (!socket.getInetAddress().toString().isEmpty()) {
-            connection = new DroidConnection(socket);
+
+        if (media.getInetAddress().toString().isEmpty() || control.getInetAddress().toString().isEmpty()) {
+            throw new IOException("Invalid socket address");
         }
-        return connection;
+        return new DroidConnection(media, control);
     }
 
     public void close() throws IOException {
-        socket.shutdownInput();
-        socket.shutdownOutput();
-        socket.close();
+        if (controlSocket != null) {
+            try {
+                controlSocket.shutdownInput();
+                controlSocket.shutdownOutput();
+            } finally {
+                controlSocket.close();
+            }
+        }
+        if (mediaSocket != null) {
+            try {
+                mediaSocket.shutdownInput();
+                mediaSocket.shutdownOutput();
+            } finally {
+                mediaSocket.close();
+            }
+        }
     }
 
     public OutputStream getOutputStream() {
-        return outputStream;
+        return mediaOutputStream;
     }
 
 
@@ -72,7 +87,7 @@ public final class DroidConnection implements Closeable {
     public int[] NewreceiveControlEvent() throws IOException {
 
         byte[] buf = new byte[20];
-        int n = inputStream.read(buf, 0, 20);
+        int n = controlInputStream.read(buf, 0, 20);
         if (n == -1) {
             throw new EOFException("Event controller socket closed");
         }
@@ -89,4 +104,3 @@ public final class DroidConnection implements Closeable {
     }
 
 }
-

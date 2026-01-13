@@ -34,6 +34,8 @@ public class Scrcpy extends Service {
     public static final String LOCAL_IP = "127.0.0.1";
     // 本地画面转发占用的端口
     public static final int LOCAL_FORWART_PORT = 7008;
+    // 本地控制通道端口
+    public static final int LOCAL_CONTROL_PORT = LOCAL_FORWART_PORT + 1;
 
     public static final int DEFAULT_ADB_PORT = 5555;
     private String serverHost;
@@ -242,17 +244,20 @@ public class Scrcpy extends Service {
         audioDecoder = new AudioDecoder();
         audioDecoder.start();
 
-        DataInputStream dataInputStream = null;
-        DataOutputStream dataOutputStream = null;
-        Socket socket = null;
+        DataInputStream mediaInputStream = null;
+        DataOutputStream controlOutputStream = null;
+        Socket mediaSocket = null;
+        Socket controlSocket = null;
         boolean firstConnect = true;
         int attempts = 50;
+        int controlPort = port + 1;
         while (attempts > 0) {
             try {
                 Log.e("Scrcpy", "Connecting to " + LOCAL_IP);
-                // socket = new Socket(ip, port);
-                socket = new Socket();
-                socket.connect(new InetSocketAddress(ip, port), 5000); //设置超时5000毫秒
+                mediaSocket = new Socket();
+                mediaSocket.connect(new InetSocketAddress(ip, port), 5000); // 设置超时5000毫秒
+                controlSocket = new Socket();
+                controlSocket.connect(new InetSocketAddress(ip, controlPort), 5000); // 控制通道
                 if (!LetServceRunning.get()) {
                     return;
                 }
@@ -266,24 +271,24 @@ public class Scrcpy extends Service {
                     // waitResolutionCount 为 10，等待100ms 也就是共计一秒钟，设置attempts 为 5，也就是 5秒后则退出
                     attempts = 5;
                 }
-                dataInputStream = new DataInputStream(socket.getInputStream());
+                mediaInputStream = new DataInputStream(mediaSocket.getInputStream());
                 int waitResolutionCount = 10;
-                while (dataInputStream.available() <= 0 && waitResolutionCount > 0) {
+                while (mediaInputStream.available() <= 0 && waitResolutionCount > 0) {
                     waitResolutionCount--;
                     try {
                         Thread.sleep(100);
                     } catch (InterruptedException ignore) {
                     }
                 }
-                if (dataInputStream.available() <= 0) {
+                if (mediaInputStream.available() <= 0) {
                     throw new IOException("can't read socket Resolution : " + attempts);
                 }
 
 
-                dataOutputStream = new DataOutputStream(socket.getOutputStream());
+                controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
                 attempts = 0;
                 byte[] buf = new byte[16];
-                dataInputStream.read(buf, 0, 16);
+                mediaInputStream.read(buf, 0, 16);
                 for (int i = 0; i < remote_dev_resolution.length; i++) {
                     remote_dev_resolution[i] = (((int) (buf[i * 4]) << 24) & 0xFF000000) |
                             (((int) (buf[i * 4 + 1]) << 16) & 0xFF0000) |
@@ -298,7 +303,7 @@ public class Scrcpy extends Service {
                 }
                 socket_status = true;
 
-                loop(dataInputStream, dataOutputStream, delay);
+                loop(mediaInputStream, controlOutputStream, delay);
 
             } catch (Exception e) {
                 e.printStackTrace();
@@ -320,23 +325,30 @@ public class Scrcpy extends Service {
                 Log.e("Scrcpy", e.getMessage() != null ? e.getMessage() : e.toString());
                 Log.e("Scrcpy", "attempts--");
             } finally {
-                if (socket != null) {
+                if (controlSocket != null) {
                     try {
-                        socket.close();
+                        controlSocket.close();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
-                if (dataOutputStream != null) {
+                if (mediaSocket != null) {
                     try {
-                        dataOutputStream.close();
+                        mediaSocket.close();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
                 }
-                if (dataInputStream != null) {
+                if (controlOutputStream != null) {
                     try {
-                        dataInputStream.close();
+                        controlOutputStream.close();
+                    } catch (IOException e) {
+                        e.printStackTrace();
+                    }
+                }
+                if (mediaInputStream != null) {
+                    try {
+                        mediaInputStream.close();
                     } catch (IOException e) {
                         e.printStackTrace();
                     }
@@ -350,7 +362,7 @@ public class Scrcpy extends Service {
 
     }
 
-    private void loop(DataInputStream dataInputStream, DataOutputStream dataOutputStream, int delay) throws InterruptedException {
+    private void loop(DataInputStream mediaInputStream, DataOutputStream controlOutputStream, int delay) throws InterruptedException {
         VideoPacket.StreamSettings streamSettings = null;
         byte[] packetSize = new byte[4];
 
@@ -367,7 +379,7 @@ public class Scrcpy extends Service {
                 if (sendevent != null) {
                     waitEvent = false;
                     try {
-                        dataOutputStream.write(sendevent, 0, sendevent.length);
+                        controlOutputStream.write(sendevent, 0, sendevent.length);
                     } catch (IOException e) {
                         e.printStackTrace();
                         if (serviceCallbacks != null) {
@@ -379,9 +391,9 @@ public class Scrcpy extends Service {
                     }
                 }
 
-                if (dataInputStream.available() > 0) {
+                if (mediaInputStream.available() > 0) {
                     waitEvent = false;
-                    dataInputStream.readFully(packetSize, 0, 4);
+                    mediaInputStream.readFully(packetSize, 0, 4);
                     int size = ByteUtils.bytesToInt(packetSize);
                     if (size > 4 * 1024 * 1024) {  // 如果单个数据包大于 4m ，直接断开连接
                         if (serviceCallbacks != null) {
@@ -391,7 +403,7 @@ public class Scrcpy extends Service {
                         return;
                     }
                     byte[] packet = new byte[size];
-                    dataInputStream.readFully(packet, 0, size);
+                    mediaInputStream.readFully(packet, 0, size);
                     if (MediaPacket.Type.getType(packet[0]) == MediaPacket.Type.VIDEO) {
                         VideoPacket videoPacket = VideoPacket.readHead(packet);
                         // byte[] data = videoPacket.data;
