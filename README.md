@@ -8,6 +8,10 @@
 
 - Screen-off Control .
 
+- Audio forwarding toggle.
+
+- Auto-reconnect when returning to foreground after background/screen-off.
+
 
 
 ## Download
@@ -53,5 +57,6 @@
 
 ## Code Reference
 
+- [ScrcpyForAndroid](https://github.com/zwc456baby/ScrcpyForAndroid)
 - [scrcpy-android](https://gitlab.com/las2mile/scrcpy-android)
 - [scrcpy](https://github.com/Genymobile/scrcpy)

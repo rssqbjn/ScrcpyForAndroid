@@ -1,6 +1,7 @@
 package xyz.aicy.scrcpy;
 
 import android.annotation.SuppressLint;
+import androidx.annotation.NonNull;
 import android.app.Activity;
 import android.content.ComponentName;
 import android.content.Context;
@@ -14,7 +15,6 @@ import android.hardware.Sensor;
 import android.hardware.SensorEvent;
 import android.hardware.SensorEventListener;
 import android.hardware.SensorManager;
-import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
 import android.os.IBinder;
@@ -38,21 +38,17 @@ import android.widget.ListPopupWindow;
 import android.widget.Spinner;
 import android.widget.Switch;
 import android.widget.Toast;
-
-import xyz.aicy.scrcpy.utils.HttpRequest;
 import xyz.aicy.scrcpy.utils.PreUtils;
 import xyz.aicy.scrcpy.utils.Progress;
 import xyz.aicy.scrcpy.utils.ThreadUtils;
 import xyz.aicy.scrcpy.utils.Util;
 import org.json.JSONArray;
 import org.json.JSONException;
-import org.json.JSONObject;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.HashMap;
 
 
 public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, SensorEventListener {
@@ -103,11 +99,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                     int count = 50;
                     while (count > 0 && !scrcpy.check_socket_connection()) {
                         count--;
-                        try {
-                            Thread.sleep(100);
-                        } catch (InterruptedException e) {
-                            e.printStackTrace();
-                        }
+                        SystemClock.sleep(100);
                     }
                     int finalCount = count;
                     ThreadUtils.post(() -> {
@@ -152,7 +144,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             // 可能会导致重复解绑，所以捕获异常
             unbindService(serviceConnection);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("Scrcpy", "Failed to unbind service", e);
         }
         if (surface != null) {
             surface = null;
@@ -223,7 +215,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
     }
 
     @Override
-    protected void onSaveInstanceState(Bundle outState) {
+    protected void onSaveInstanceState(@NonNull Bundle outState) {
         super.onSaveInstanceState(outState);
         Log.i("Scrcpy", "enter onSaveInstanceState");
         outState.putBoolean("from_save_instance", true);
@@ -291,18 +283,15 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         }
         final ListPopupWindow listPopupWindow;
         listPopupWindow = new ListPopupWindow(this);
-        listPopupWindow.setAdapter(new ArrayAdapter<String>(this, android.R.layout.simple_list_item_1, list));//用android内置布局，或设计自己的样式
+        listPopupWindow.setAdapter(new ArrayAdapter<>(this, android.R.layout.simple_list_item_1, list));//用android内置布局，或设计自己的样式
         listPopupWindow.setAnchorView(mEditText);//以哪个控件为基准，在该处以mEditText为基准
         listPopupWindow.setModal(true);
         listPopupWindow.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE);
 
         String[] finalList = list;
-        listPopupWindow.setOnItemClickListener(new AdapterView.OnItemClickListener() {//设置项点击监听
-            @Override
-            public void onItemClick(AdapterView<?> adapterView, View view, int i, long l) {
-                mEditText.setText(finalList[i]);
-                listPopupWindow.dismiss();
-            }
+        listPopupWindow.setOnItemClickListener((adapterView, view, i, l) -> {
+            mEditText.setText(finalList[i]);
+            listPopupWindow.dismiss();
         });
         listPopupWindow.show();
     }
@@ -504,7 +493,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             }
             return retList;
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("Scrcpy", "Failed to parse history list", e);
         }
         return new String[]{};
     }
@@ -525,7 +514,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             try {
                 historyJson.put(0, device);
             } catch (JSONException e) {
-                e.printStackTrace();
+                Log.e("Scrcpy", "Failed to update history list", e);
             }
             // 最多记录 30 个
             int count = Math.min(historyList.length, 30);
@@ -538,11 +527,12 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         try {
             return PreUtils.put(context, Constant.HISTORY_LIST_KEY, historyJson.toString());
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("Scrcpy", "Failed to save history list", e);
         }
         return false;
     }
 
+    @SuppressLint("SuspiciousNameCombination")
     private void swapDimensions() {
         int temp = screenHeight;
         screenHeight = screenWidth;
@@ -573,44 +563,6 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         start_Scrcpy_service();
     }
 
-
-//    protected String wifiIpAddress() {
-////https://stackoverflow.com/questions/6064510/how-to-get-ip-address-of-the-device-from-code
-//        try {
-//            InetAddress ipv4 = null;
-//            InetAddress ipv6 = null;
-//            Enumeration<NetworkInterface> en = NetworkInterface.getNetworkInterfaces();
-//            if (en != null) {
-//                while (en.hasMoreElements()) {
-//                    NetworkInterface int_f = en.nextElement();
-//                    for (Enumeration<InetAddress> enumIpAddr = int_f
-//                            .getInetAddresses(); enumIpAddr.hasMoreElements(); ) {
-//                        InetAddress inetAddress = enumIpAddr.nextElement();
-//                        if (inetAddress instanceof Inet6Address) {
-//                            ipv6 = inetAddress;
-//                            continue;
-//                        }
-//                        if (inetAddress.isLoopbackAddress() && inetAddress instanceof Inet4Address) {
-//                            ipv4 = inetAddress;
-//                            continue;
-//                        }
-//                        return inetAddress.getHostAddress();
-//                    }
-//                }
-//            }
-//            if (ipv6 != null) {
-//                return ipv6.getHostAddress();
-//            }
-//            if (ipv4 != null) {
-//                return ipv4.getHostAddress();
-//            }
-//        } catch (Exception ex) {
-//            ex.printStackTrace();
-//        }
-//        return "127.0.0.1";
-//    }
-
-
     private void start_Scrcpy_service() {
         Intent intent = new Intent(this, Scrcpy.class);
         startService(intent);
@@ -627,7 +579,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             // 可能会导致重复解绑，所以捕获异常
             unbindService(serviceConnection);
         } catch (Exception e) {
-            e.printStackTrace();
+            Log.e("Scrcpy", "Failed to unbind service during rotation", e);
         }
         serviceBound = false;
         result_of_Rotation = true;
@@ -749,7 +701,10 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
 
     private void connectScrcpyServer(String serverAdr) {
         if (!TextUtils.isEmpty(serverAdr)) {
-            saveHistory(serverAdr);  // 保存到历史记录
+            boolean historySaved = saveHistory(serverAdr);  // 保存到历史记录
+            if (!historySaved) {
+                Log.w("Scrcpy", "Failed to save history for " + serverAdr);
+            }
             String[] serverInfo = Util.getServerHostAndPort(serverAdr);
             String serverHost = serverInfo[0];
             int serverPort = Integer.parseInt(serverInfo[1]);
@@ -880,8 +835,6 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                 finishAndRemoveTask();
             }
         }
-//        Log.i("Scrcpy", "headlessMode： " + headlessMode +
-//                " ,resumeScrcpy: " + resumeScrcpy + " ,result_of_Rotation: " + result_of_Rotation);
     }
 
 }
