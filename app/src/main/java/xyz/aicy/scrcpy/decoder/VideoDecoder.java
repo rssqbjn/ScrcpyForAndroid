@@ -2,19 +2,21 @@ package xyz.aicy.scrcpy.decoder;
 
 import android.media.MediaCodec;
 import android.media.MediaFormat;
-import android.os.Build;
 import android.util.Log;
 import android.view.Surface;
 
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class VideoDecoder {
     private MediaCodec mCodec;
     private Worker mWorker;
     private AtomicBoolean mIsConfigured = new AtomicBoolean(false);
+    private static final int SAMPLE_QUEUE_CAPACITY = 30;
 
     public void decodeSample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
         if (mWorker != null) {
@@ -51,6 +53,7 @@ public class VideoDecoder {
     private class Worker extends Thread {
 
         private AtomicBoolean mIsRunning = new AtomicBoolean(false);
+        private final BlockingQueue<Sample> sampleQueue = new ArrayBlockingQueue<>(SAMPLE_QUEUE_CAPACITY);
 
         Worker() {
         }
@@ -72,8 +75,8 @@ public class VideoDecoder {
                 if (mCodec != null) {
                     mCodec.stop();
                 }
-
             }
+            sampleQueue.clear();
             MediaFormat format = MediaFormat.createVideoFormat("video/avc", width, height);
             format.setByteBuffer("csd-0", csd0);
             format.setByteBuffer("csd-1", csd1);
@@ -89,24 +92,15 @@ public class VideoDecoder {
         }
 
 
-        @SuppressWarnings("deprecation")
         public void decodeSample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
-            if (mIsConfigured.get() && mIsRunning.get()) {
-                int index = mCodec.dequeueInputBuffer(-1);
-                if (index >= 0) {
-                    ByteBuffer buffer;
-
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                        buffer = mCodec.getInputBuffers()[index];
-                        buffer.clear();
-                    } else {
-                        buffer = mCodec.getInputBuffer(index);
-                    }
-                    if (buffer != null) {
-                        buffer.put(data, offset, size);
-                        mCodec.queueInputBuffer(index, 0, size, presentationTimeUs, flags);
-                    }
-                }
+            if (!mIsConfigured.get() || !mIsRunning.get()) {
+                return;
+            }
+            Sample sample = new Sample(data, offset, size, presentationTimeUs, flags);
+            if (!sampleQueue.offer(sample)) {
+                // Drop oldest frame to keep latency low
+                sampleQueue.poll();
+                sampleQueue.offer(sample);
             }
         }
 
@@ -114,12 +108,34 @@ public class VideoDecoder {
         public void run() {
             try {
                 MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                Sample pendingSample = null;
                 while (mIsRunning.get()) {
                     if (mIsConfigured.get()) {
-                        int index = mCodec.dequeueOutputBuffer(info, 0);
-                        if (index >= 0) {
+                        if (pendingSample == null) {
+                            pendingSample = sampleQueue.poll();
+                        }
+                        if (pendingSample != null) {
+                            int inputIndex = mCodec.dequeueInputBuffer(0);
+                            if (inputIndex >= 0) {
+                                ByteBuffer buffer;
+                                buffer = mCodec.getInputBuffer(inputIndex);
+                                if (buffer != null) {
+                                    buffer.put(pendingSample.data, pendingSample.offset, pendingSample.size);
+                                    mCodec.queueInputBuffer(inputIndex, 0, pendingSample.size, pendingSample.presentationTimeUs, pendingSample.flags);
+                                    pendingSample = null;
+                                }
+                            } else {
+                                try {
+                                    Thread.sleep(2);
+                                } catch (InterruptedException ignore) {
+                                }
+                            }
+                        }
+
+                        int outputIndex = mCodec.dequeueOutputBuffer(info, 0);
+                        if (outputIndex >= 0) {
                             // setting true is telling system to render frame onto Surface
-                            mCodec.releaseOutputBuffer(index, true);
+                            mCodec.releaseOutputBuffer(outputIndex, true);
                             if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                                 break;
                             }
@@ -135,6 +151,22 @@ public class VideoDecoder {
             } catch (IllegalStateException e) {
             }
 
+        }
+    }
+
+    private static class Sample {
+        final byte[] data;
+        final int offset;
+        final int size;
+        final long presentationTimeUs;
+        final int flags;
+
+        Sample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
+            this.data = data;
+            this.offset = offset;
+            this.size = size;
+            this.presentationTimeUs = presentationTimeUs;
+            this.flags = flags;
         }
     }
 }

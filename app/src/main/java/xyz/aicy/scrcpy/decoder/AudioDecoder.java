@@ -1,17 +1,17 @@
 package xyz.aicy.scrcpy.decoder;
 
+import android.media.AudioAttributes;
 import android.media.AudioFormat;
-import android.media.AudioManager;
 import android.media.AudioTrack;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
-import android.os.Build;
 import android.util.Log;
-import android.view.Surface;
 
 
 import java.io.IOException;
 import java.nio.ByteBuffer;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class AudioDecoder {
@@ -21,14 +21,28 @@ public class AudioDecoder {
     private MediaCodec mCodec;
     private Worker mWorker;
     private AtomicBoolean mIsConfigured = new AtomicBoolean(false);
+    private static final int SAMPLE_QUEUE_CAPACITY = 100;
 
     private AudioTrack audioTrack;
     private final int SAMPLE_RATE = 48000;
 
     private void initAudioTrack() {
         int bufferSizeInBytes = AudioTrack.getMinBufferSize(SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT);
-        audioTrack = new AudioTrack(AudioManager.STREAM_MUSIC, SAMPLE_RATE, AudioFormat.CHANNEL_OUT_STEREO, AudioFormat.ENCODING_PCM_16BIT,
-                bufferSizeInBytes, AudioTrack.MODE_STREAM);
+        AudioAttributes attributes = new AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build();
+        AudioFormat format = new AudioFormat.Builder()
+                .setSampleRate(SAMPLE_RATE)
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
+                .setChannelMask(AudioFormat.CHANNEL_OUT_STEREO)
+                .build();
+        audioTrack = new AudioTrack.Builder()
+                .setAudioAttributes(attributes)
+                .setAudioFormat(format)
+                .setBufferSizeInBytes(bufferSizeInBytes)
+                .setTransferMode(AudioTrack.MODE_STREAM)
+                .build();
     }
 
     public void decodeSample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
@@ -69,6 +83,7 @@ public class AudioDecoder {
     private class Worker extends Thread {
 
         private AtomicBoolean mIsRunning = new AtomicBoolean(false);
+        private final BlockingQueue<Sample> sampleQueue = new ArrayBlockingQueue<>(SAMPLE_QUEUE_CAPACITY);
 
         Worker() {
         }
@@ -91,6 +106,7 @@ public class AudioDecoder {
                     audioTrack.stop();
                 }
             }
+            sampleQueue.clear();
             MediaFormat format = MediaFormat.createAudioFormat(MIMETYPE_AUDIO_AAC, SAMPLE_RATE, 2);
             // 设置比特率
             format.setInteger(MediaFormat.KEY_BIT_RATE, 128000);
@@ -115,24 +131,15 @@ public class AudioDecoder {
         }
 
 
-        @SuppressWarnings("deprecation")
         public void decodeSample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
-            if (mIsConfigured.get() && mIsRunning.get()) {
-                int index = mCodec.dequeueInputBuffer(-1);
-                if (index >= 0) {
-                    ByteBuffer buffer;
-
-                    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.LOLLIPOP) {
-                        buffer = mCodec.getInputBuffers()[index];
-                        buffer.clear();
-                    } else {
-                        buffer = mCodec.getInputBuffer(index);
-                    }
-                    if (buffer != null) {
-                        buffer.put(data, offset, size);
-                        mCodec.queueInputBuffer(index, 0, size, presentationTimeUs, flags);
-                    }
-                }
+            if (!mIsConfigured.get() || !mIsRunning.get()) {
+                return;
+            }
+            Sample sample = new Sample(data, offset, size, presentationTimeUs, flags);
+            if (!sampleQueue.offer(sample)) {
+                // Drop oldest to keep audio in sync with video
+                sampleQueue.poll();
+                sampleQueue.offer(sample);
             }
         }
 
@@ -140,18 +147,40 @@ public class AudioDecoder {
         public void run() {
             try {
                 MediaCodec.BufferInfo info = new MediaCodec.BufferInfo();
+                Sample pendingSample = null;
                 while (mIsRunning.get()) {
                     if (mIsConfigured.get()) {
-                        int index = mCodec.dequeueOutputBuffer(info, 0);
-                        // Log.e("Scrcpy", "Audio Decoder: " + index);
-                        if (index >= 0) {
+                        if (pendingSample == null) {
+                            pendingSample = sampleQueue.poll();
+                        }
+                        if (pendingSample != null) {
+                            int inputIndex = mCodec.dequeueInputBuffer(0);
+                            if (inputIndex >= 0) {
+                                ByteBuffer buffer;
+                                buffer = mCodec.getInputBuffer(inputIndex);
+                                if (buffer != null) {
+                                    buffer.put(pendingSample.data, pendingSample.offset, pendingSample.size);
+                                    mCodec.queueInputBuffer(inputIndex, 0, pendingSample.size, pendingSample.presentationTimeUs, pendingSample.flags);
+                                    pendingSample = null;
+                                }
+                            } else {
+                                try {
+                                    Thread.sleep(2);
+                                } catch (InterruptedException ignore) {
+                                }
+                            }
+                        }
+
+                        int outputIndex = mCodec.dequeueOutputBuffer(info, 0);
+                        // Log.e("Scrcpy", "Audio Decoder: " + outputIndex);
+                        if (outputIndex >= 0) {
                             if ((info.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) == MediaCodec.BUFFER_FLAG_END_OF_STREAM) {
                                 break;
                             }
-                            // Log.e("Scrcpy", "Audio success get frame: " + index);
+                            // Log.e("Scrcpy", "Audio success get frame: " + outputIndex);
 
                             // 读取 pcm 数据，写入 audiotrack 播放
-                            ByteBuffer outputBuffer = mCodec.getOutputBuffer(index);
+                            ByteBuffer outputBuffer = mCodec.getOutputBuffer(outputIndex);
                             if (outputBuffer != null && info.size > 0) {
                                 outputBuffer.position(info.offset);
                                 outputBuffer.limit(info.offset + info.size);
@@ -160,7 +189,7 @@ public class AudioDecoder {
                                 audioTrack.write(data, 0, info.size);
                             }
                             // release (audio buffers must not be rendered)
-                            mCodec.releaseOutputBuffer(index, false);
+                            mCodec.releaseOutputBuffer(outputIndex, false);
                         }
                     } else {
                         // just waiting to be configured, then decode and render
@@ -173,6 +202,22 @@ public class AudioDecoder {
             } catch (IllegalStateException e) {
             }
 
+        }
+    }
+
+    private static class Sample {
+        final byte[] data;
+        final int offset;
+        final int size;
+        final long presentationTimeUs;
+        final int flags;
+
+        Sample(byte[] data, int offset, int size, long presentationTimeUs, int flags) {
+            this.data = data;
+            this.offset = offset;
+            this.size = size;
+            this.presentationTimeUs = presentationTimeUs;
+            this.flags = flags;
         }
     }
 }
