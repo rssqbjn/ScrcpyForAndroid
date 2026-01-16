@@ -3,6 +3,7 @@ package xyz.aicy.scrcpy.decoder;
 import android.media.MediaCodec;
 import android.media.MediaFormat;
 import android.os.Build;
+import android.util.Log;
 import android.view.Surface;
 
 
@@ -59,6 +60,13 @@ public class VideoDecoder {
         }
 
         private void configure(Surface surface, int width, int height, ByteBuffer csd0, ByteBuffer csd1) {
+            int csd0Len = csd0 == null ? -1 : csd0.remaining();
+            int csd1Len = csd1 == null ? -1 : csd1.remaining();
+            if (surface == null || csd0 == null || csd1 == null || csd0Len <= 0 || csd1Len <= 0) {
+                Log.w("Scrcpy", "Video configure skipped: surface=" + (surface != null)
+                        + " csd0=" + csd0Len + " csd1=" + csd1Len);
+                return;
+            }
             if (mIsConfigured.get()) {
                 mIsConfigured.set(false);
                 if (mCodec != null) {
@@ -76,6 +84,7 @@ public class VideoDecoder {
             }
             mCodec.configure(format, surface, null, 0);
             mCodec.start();
+            Log.d("Scrcpy", "Video decoder configured: " + width + "x" + height);
             mIsConfigured.set(true);
         }
 

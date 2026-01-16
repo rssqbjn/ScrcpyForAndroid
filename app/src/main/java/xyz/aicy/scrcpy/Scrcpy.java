@@ -33,7 +33,7 @@ public class Scrcpy extends Service {
 
     public static final String LOCAL_IP = "127.0.0.1";
     // 本地画面转发占用的端口
-    public static final int LOCAL_FORWART_PORT = 7008;
+    public static final int LOCAL_FORWART_PORT = 7007;
     // 本地控制通道端口
     public static final int LOCAL_CONTROL_PORT = LOCAL_FORWART_PORT + 1;
 
@@ -393,7 +393,7 @@ public class Scrcpy extends Service {
                     try {
                         controlOutputStream.write(sendevent, 0, sendevent.length);
                     } catch (IOException e) {
-                        e.printStackTrace();
+                        Log.e("Scrcpy", "Control channel write failed, disconnecting", e);
                         if (serviceCallbacks != null) {
                             serviceCallbacks.errorDisconnect();
                         }
@@ -407,7 +407,19 @@ public class Scrcpy extends Service {
                     waitEvent = false;
                     mediaInputStream.readFully(packetSize, 0, 4);
                     int size = ByteUtils.bytesToInt(packetSize);
-                    if (size > 4 * 1024 * 1024) {  // 如果单个数据包大于 4m ，直接断开连接
+                    if (size <= 0 || size > 4 * 1024 * 1024) {  // 如果单个数据包大小异常，直接断开连接
+                        StringBuilder hex = new StringBuilder(11);
+                        for (int i = 0; i < 4; i++) {
+                            int v = packetSize[i] & 0xFF;
+                            if (i > 0) {
+                                hex.append(' ');
+                            }
+                            if (v < 0x10) {
+                                hex.append('0');
+                            }
+                            hex.append(Integer.toHexString(v));
+                        }
+                        Log.e("Scrcpy", "Invalid packet size=" + size + " header=" + hex);
                         if (serviceCallbacks != null) {
                             serviceCallbacks.errorDisconnect();
                         }
@@ -425,6 +437,9 @@ public class Scrcpy extends Service {
                                 byte[] data = new byte[dataLength];
                                 System.arraycopy(packet, VideoPacket.getHeadLen(), data, 0, dataLength);
                                 streamSettings = VideoPacket.getStreamSettings(data);
+                                if (streamSettings == null || streamSettings.sps == null || streamSettings.pps == null) {
+                                    Log.w("Scrcpy", "Video CONFIG parse failed, len=" + dataLength);
+                                }
                                 if (!first_time) {
                                     if (serviceCallbacks != null) {
                                         serviceCallbacks.loadNewRotation();
@@ -441,7 +456,7 @@ public class Scrcpy extends Service {
                                 }
                             }
                             updateAvailable.set(false);
-                            if (streamSettings != null) {
+                            if (streamSettings != null && streamSettings.sps != null && streamSettings.pps != null) {
                                 videoDecoder.configure(surface, screenWidth, screenHeight, streamSettings.sps, streamSettings.pps);
                             }
                         } else if (videoPacket.flag == VideoPacket.Flag.END) {
@@ -477,6 +492,7 @@ public class Scrcpy extends Service {
                             int dataLength = packet.length - AudioPacket.getHeadLen();
                             byte[] data = new byte[dataLength];
                             System.arraycopy(packet, AudioPacket.getHeadLen(), data, 0, dataLength);
+                            Log.d("Scrcpy", "Audio CONFIG len=" + dataLength);
                             audioDecoder.configure(data);
                         } else if (audioPacket.flag == AudioPacket.Flag.END) {
                             // need close stream

@@ -78,6 +78,10 @@ public class AudioDecoder {
         }
 
         private void configure(byte[] data) {
+            if (data == null || data.length == 0) {
+                Log.w("Scrcpy", "Audio configure skipped: empty CSD");
+                return;
+            }
             if (mIsConfigured.get()) {
                 mIsConfigured.set(false);
                 if (mCodec != null) {
@@ -102,6 +106,7 @@ public class AudioDecoder {
             mCodec.configure(format, null, null, 0);
             mCodec.start();
             mIsConfigured.set(true);
+            Log.d("Scrcpy", "Audio decoder configured: csd=" + data.length);
 
             // 初始化音频播放器
             initAudioTrack();
@@ -147,14 +152,15 @@ public class AudioDecoder {
 
                             // 读取 pcm 数据，写入 audiotrack 播放
                             ByteBuffer outputBuffer = mCodec.getOutputBuffer(index);
-                            if (outputBuffer != null) {
+                            if (outputBuffer != null && info.size > 0) {
+                                outputBuffer.position(info.offset);
+                                outputBuffer.limit(info.offset + info.size);
                                 byte[] data = new byte[info.size];
                                 outputBuffer.get(data);
-                                outputBuffer.clear();
                                 audioTrack.write(data, 0, info.size);
                             }
-                            // release
-                            mCodec.releaseOutputBuffer(index, true);
+                            // release (audio buffers must not be rendered)
+                            mCodec.releaseOutputBuffer(index, false);
                         }
                     } else {
                         // just waiting to be configured, then decode and render

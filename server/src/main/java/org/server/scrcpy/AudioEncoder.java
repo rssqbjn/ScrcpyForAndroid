@@ -217,7 +217,9 @@ public class AudioEncoder {
                         }
                         AudioPacket packet = new AudioPacket(MediaPacket.Type.AUDIO, flag, bufferInfo.presentationTimeUs, b);
                         try {
-                            outputStream.write(packet.toByteArray());
+                            synchronized (outputStream) {
+                                outputStream.write(packet.toByteArray());
+                            }
                         } catch (IOException e) {
                             Ln.e("output stream write failed", e);
                             end();
@@ -240,7 +242,23 @@ public class AudioEncoder {
 
         @Override
         public void onOutputFormatChanged(MediaCodec codec, MediaFormat format) {
-            // ignore
+            ByteBuffer csd0 = format.getByteBuffer("csd-0");
+            if (csd0 == null || csd0.remaining() == 0) {
+                Log.w("ScreenCapture", "audio output format missing csd");
+                return;
+            }
+            byte[] data = new byte[csd0.remaining()];
+            csd0.get(data);
+            AudioPacket packet = new AudioPacket(MediaPacket.Type.AUDIO, AudioPacket.Flag.CONFIG, 0, data);
+            try {
+                synchronized (outputStream) {
+                    outputStream.write(packet.toByteArray());
+                }
+                Log.d("ScreenCapture", "audio CONFIG sent: csd=" + data.length);
+            } catch (IOException e) {
+                Ln.e("audio config write failed", e);
+                end();
+            }
         }
     }
 }

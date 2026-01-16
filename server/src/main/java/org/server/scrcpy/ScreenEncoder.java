@@ -145,7 +145,9 @@ public class ScreenEncoder implements Device.RotationListener {
             array[j * 4 + 2] = (byte) ((c & 0xFF00) >> 8);
             array[j * 4 + 3] = (byte) (c & 0xFF);
         }
-        outputStream.write(array, 0, array.length);   // Sending device resolution
+        synchronized (outputStream) {
+            outputStream.write(array, 0, array.length);   // Sending device resolution
+        }
 
         if (audioEnabled) {
             startAudioCapture(outputStream);  // start audio capture
@@ -228,9 +230,31 @@ public class ScreenEncoder implements Device.RotationListener {
         @SuppressWarnings("checkstyle:MagicNumber")
 //        byte[] buf = new byte[bitRate / 8]; // may contain up to 1 second of video
         boolean eof = false;
+        boolean configSent = false;
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         while (!consumeRotationChange() && !eof) {
             int outputBufferId = codec.dequeueOutputBuffer(bufferInfo, -1);
+            if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
+                MediaFormat outFormat = codec.getOutputFormat();
+                ByteBuffer csd0 = outFormat.getByteBuffer("csd-0");
+                ByteBuffer csd1 = outFormat.getByteBuffer("csd-1");
+                if (csd0 != null && csd1 != null) {
+                    byte[] sps = withStartCode(csd0);
+                    byte[] pps = withStartCode(csd1);
+                    byte[] config = new byte[sps.length + pps.length];
+                    System.arraycopy(sps, 0, config, 0, sps.length);
+                    System.arraycopy(pps, 0, config, sps.length, pps.length);
+                    VideoPacket packet = new VideoPacket(MediaPacket.Type.VIDEO, VideoPacket.Flag.CONFIG, 0, config);
+                    synchronized (outputStream) {
+                        outputStream.write(packet.toByteArray());
+                    }
+                    Log.d("ScreenCapture", "video CONFIG sent: sps=" + sps.length + " pps=" + pps.length);
+                    configSent = true;
+                } else {
+                    Log.w("ScreenCapture", "video output format missing csd");
+                }
+                continue;
+            }
             eof = (bufferInfo.flags & MediaCodec.BUFFER_FLAG_END_OF_STREAM) != 0;
             try {
                 if (consumeRotationChange()) {
@@ -243,6 +267,12 @@ public class ScreenEncoder implements Device.RotationListener {
                     outputBuffer = codec.getOutputBuffer(outputBufferId);
 
                     if (bufferInfo.size > 0 && outputBuffer != null) {
+                        if ((bufferInfo.flags & MediaCodec.BUFFER_FLAG_CODEC_CONFIG) != 0) {
+                            if (!configSent) {
+                                Log.w("ScreenCapture", "video codec config in buffer but format config missing");
+                            }
+                            continue;
+                        }
                         outputBuffer.position(bufferInfo.offset);
                         outputBuffer.limit(bufferInfo.offset + bufferInfo.size);
                         byte[] b = new byte[outputBuffer.remaining()];
@@ -259,7 +289,9 @@ public class ScreenEncoder implements Device.RotationListener {
                             flag = VideoPacket.Flag.FRAME;
                         }
                         VideoPacket packet = new VideoPacket(type, flag, bufferInfo.presentationTimeUs, b);
-                        outputStream.write(packet.toByteArray());
+                        synchronized (outputStream) {
+                            outputStream.write(packet.toByteArray());
+                        }
                     }
 
                 }
@@ -271,5 +303,22 @@ public class ScreenEncoder implements Device.RotationListener {
         }
 
         return !eof;
+    }
+
+    private static byte[] withStartCode(ByteBuffer buffer) {
+        ByteBuffer dup = buffer.duplicate();
+        dup.clear();
+        byte[] data = new byte[dup.remaining()];
+        dup.get(data);
+        if (data.length >= 4 && data[0] == 0x00 && data[1] == 0x00 && data[2] == 0x00 && data[3] == 0x01) {
+            return data;
+        }
+        byte[] out = new byte[data.length + 4];
+        out[0] = 0x00;
+        out[1] = 0x00;
+        out[2] = 0x00;
+        out[3] = 0x01;
+        System.arraycopy(data, 0, out, 4, data.length);
+        return out;
     }
 }

@@ -1,5 +1,7 @@
 package xyz.aicy.scrcpy.model;
 
+import android.util.Log;
+
 import java.nio.ByteBuffer;
 
 /**
@@ -104,24 +106,32 @@ public class VideoPacket extends MediaPacket {
     }
 
     public static StreamSettings getStreamSettings(byte[] buffer) {
-        byte[] sps, pps;
-
-        ByteBuffer spsPpsBuffer = ByteBuffer.wrap(buffer);
-        if (spsPpsBuffer.getInt() == 0x00000001) {
-            System.out.println("parsing sps/pps");
-        } else {
-            System.out.println("something is amiss?");
+        if (buffer == null || buffer.length < 8) {
+            Log.w("Scrcpy", "Video CSD buffer too small: " + (buffer == null ? -1 : buffer.length));
+            return null;
         }
-        int ppsIndex = 0;
-        while (!(spsPpsBuffer.get() == 0x00 && spsPpsBuffer.get() == 0x00 && spsPpsBuffer.get() == 0x00 && spsPpsBuffer.get() == 0x01)) {
 
+        if (ByteBuffer.wrap(buffer).getInt() != 0x00000001) {
+            Log.w("Scrcpy", "Video CSD missing SPS start code");
         }
-        ppsIndex = spsPpsBuffer.position();
-        sps = new byte[ppsIndex - 4];
+
+        int ppsIndex = -1;
+        for (int i = 4; i <= buffer.length - 4; i++) {
+            if (buffer[i] == 0x00 && buffer[i + 1] == 0x00 && buffer[i + 2] == 0x00 && buffer[i + 3] == 0x01) {
+                ppsIndex = i;
+                break;
+            }
+        }
+        if (ppsIndex <= 0) {
+            Log.w("Scrcpy", "Video CSD missing PPS start code, len=" + buffer.length);
+            return null;
+        }
+
+        byte[] sps = new byte[ppsIndex];
         System.arraycopy(buffer, 0, sps, 0, sps.length);
-        ppsIndex -= 4;
-        pps = new byte[buffer.length - ppsIndex];
+        byte[] pps = new byte[buffer.length - ppsIndex];
         System.arraycopy(buffer, ppsIndex, pps, 0, pps.length);
+        Log.d("Scrcpy", "Video CSD parsed: sps=" + sps.length + " pps=" + pps.length);
 
         // sps buffer
         ByteBuffer spsBuffer = ByteBuffer.wrap(sps, 0, sps.length);
