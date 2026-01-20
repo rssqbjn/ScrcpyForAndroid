@@ -8,6 +8,7 @@ public class Constant {
     public static final String CONTROL_AUDIO = "control_audio";
     public static final String CONTROL_AUTO_RECONNECT = "control_auto_reconnect";
     public static final String CONTROL_REMOTE_ADDR = "control_remote_addr";
+    public static final String CONTROL_CAPTURE_KEYS = "control_capture_keys";  // 捕获物理按键发送到远程设备
 
     public static final String PREFERENCE_SPINNER_RESOLUTION = "spinner_resolution";
     public static final String PREFERENCE_SPINNER_BITRATE = "spinner_bitrate";

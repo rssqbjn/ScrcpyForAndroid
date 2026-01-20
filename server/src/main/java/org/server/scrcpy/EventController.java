@@ -84,7 +84,22 @@ public class EventController {
                             Ln.w("Display power off request failed; leaving screen on to avoid locking");
                         }
                     } else {
-                        injectKeycode(buffer[0]);
+                        // buffer[1] 包含 action 和 repeat 信息
+                        // action: 0=单击, 1=ACTION_DOWN, 2=ACTION_UP, 3=ACTION_DOWN with repeat
+                        int actionRepeat = buffer[1];
+                        int action = actionRepeat & 0xFF;
+                        int repeat = (actionRepeat >> 8) & 0xFF;
+                        
+                        if (action == 0) {
+                            // 单击：发送按下+抬起
+                            injectKeycode(buffer[0]);
+                        } else if (action == 1 || action == 3) {
+                            // 按下事件
+                            injectKeyEvent(KeyEvent.ACTION_DOWN, buffer[0], repeat, 0);
+                        } else if (action == 2) {
+                            // 抬起事件
+                            injectKeyEvent(KeyEvent.ACTION_UP, buffer[0], 0, 0);
+                        }
                     }
                 } else {
                     int action = buffer[0];

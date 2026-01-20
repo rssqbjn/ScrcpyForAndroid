@@ -24,6 +24,7 @@ import android.util.DisplayMetrics;
 import android.util.Log;
 import android.view.Display;
 import android.view.KeyEvent;
+import android.view.MotionEvent;
 import android.view.Surface;
 import android.view.SurfaceView;
 import android.view.View;
@@ -306,6 +307,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         final Switch aSwitch1 = findViewById(R.id.switch1);
         final Switch switchScreenOff = findViewById(R.id.switch_screen_off);
         final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
+        final Switch switchCaptureKeys = findViewById(R.id.switch_capture_keys);
         String historySpServerAdr = PreUtils.get(context, Constant.CONTROL_REMOTE_ADDR, "");
         if (TextUtils.isEmpty(historySpServerAdr)) {
             String[] historyList = getHistoryList();
@@ -319,6 +321,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         aSwitch1.setChecked(PreUtils.get(context, Constant.CONTROL_NAV, false));
         switchScreenOff.setChecked(PreUtils.get(context, Constant.CONTROL_SCREEN_OFF, false));
         switchAudioForward.setChecked(PreUtils.get(context, Constant.CONTROL_AUDIO, true));
+        switchCaptureKeys.setChecked(PreUtils.get(context, Constant.CONTROL_CAPTURE_KEYS, false));
         setSpinner(R.array.options_resolution_values, R.id.spinner_video_resolution, Constant.PREFERENCE_SPINNER_RESOLUTION);
         setSpinner(R.array.options_bitrate_keys, R.id.spinner_video_bitrate, Constant.PREFERENCE_SPINNER_BITRATE);
         setSpinner(R.array.options_delay_keys, R.id.delay_control_spinner, Constant.PREFERENCE_SPINNER_DELAY);
@@ -418,12 +421,62 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                 backButton.setOnClickListener(v -> scrcpy.sendKeyevent(KeyEvent.KEYCODE_BACK));
             }
             if (homeButton != null) {
-                homeButton.setOnClickListener(v -> scrcpy.sendKeyevent(KeyEvent.KEYCODE_HOME));
+                // Home 键支持长按（长按会触发语音助手等）
+                setupLongPressButton(homeButton, KeyEvent.KEYCODE_HOME);
             }
             if (appswitchButton != null) {
                 appswitchButton.setOnClickListener(v -> scrcpy.sendKeyevent(KeyEvent.KEYCODE_APP_SWITCH));
             }
+            
+            // 电源按钮 - 控制远程设备电源，支持长按（长按弹出关机菜单）
+            final View powerButton = findViewById(R.id.power_button);
+            if (powerButton != null) {
+                setupLongPressButton(powerButton, KeyEvent.KEYCODE_POWER);
+            }
         }
+    }
+
+    /**
+     * 为虚拟按钮设置长按支持
+     * 短按：发送单击事件
+     * 长按：发送按下事件，松开时发送抬起事件
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupLongPressButton(View button, int keyCode) {
+        final boolean[] isLongPress = {false};
+        
+        button.setOnLongClickListener(v -> {
+            isLongPress[0] = true;
+            Log.d("Scrcpy", "Virtual button long press DOWN: " + KeyEvent.keyCodeToString(keyCode));
+            scrcpy.sendKeyeventWithAction(keyCode, 1, 0);  // 发送按下事件
+            return true;
+        });
+        
+        button.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (isLongPress[0]) {
+                    // 长按后松开，发送抬起事件
+                    Log.d("Scrcpy", "Virtual button long press UP: " + KeyEvent.keyCodeToString(keyCode));
+                    scrcpy.sendKeyeventWithAction(keyCode, 2, 0);  // 发送抬起事件
+                    isLongPress[0] = false;
+                    return true;
+                }
+            } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                if (isLongPress[0]) {
+                    // 取消时也发送抬起事件
+                    scrcpy.sendKeyeventWithAction(keyCode, 2, 0);
+                    isLongPress[0] = false;
+                }
+            }
+            return false;  // 返回false让其他事件继续处理（如click）
+        });
+        
+        button.setOnClickListener(v -> {
+            if (!isLongPress[0]) {
+                // 短按，发送单击事件
+                scrcpy.sendKeyevent(keyCode);
+            }
+        });
     }
 
     private void setSpinner(final int textArrayOptionResId, final int textViewResId, final String preferenceId) {
@@ -472,10 +525,13 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         boolean screenOff = switchScreenOff.isChecked();
         final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
         boolean audioForward = switchAudioForward.isChecked();
+        final Switch switchCaptureKeys = findViewById(R.id.switch_capture_keys);
+        boolean captureKeys = switchCaptureKeys.isChecked();
         PreUtils.put(context, Constant.CONTROL_NO, no_control);
         PreUtils.put(context, Constant.CONTROL_NAV, nav);
         PreUtils.put(context, Constant.CONTROL_SCREEN_OFF, screenOff);
         PreUtils.put(context, Constant.CONTROL_AUDIO, audioForward);
+        PreUtils.put(context, Constant.CONTROL_CAPTURE_KEYS, captureKeys);
 
         final String[] videoResolutions = getResources().getStringArray(R.array.options_resolution_values)[videoResolutionSpinner.getSelectedItemPosition()].split("x");
         screenHeight = Integer.parseInt(videoResolutions[0]);
@@ -701,6 +757,61 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
     @Override
     public void onAccuracyChanged(Sensor sensor, int i) {
 
+    }
+
+    /**
+     * 捕获物理按键事件并转发到远程设备
+     * 支持捕获音量键和电源键
+     * 同时按下音量+和音量-可以触发远程设备电源键
+     */
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        int keyCode = event.getKeyCode();
+        int action = event.getAction();
+        
+        // 只有在连接状态下且开启了捕获按键功能时才处理
+        if (serviceBound && scrcpy != null && scrcpy.check_socket_connection() 
+                && PreUtils.get(context, Constant.CONTROL_CAPTURE_KEYS, false)
+                && !PreUtils.get(context, Constant.CONTROL_NO, false)) {  // 观看模式下不转发按键
+            
+            // 判断是否是我们要捕获的按键
+            boolean shouldCapture = false;
+            switch (keyCode) {
+                case KeyEvent.KEYCODE_VOLUME_UP:
+                case KeyEvent.KEYCODE_VOLUME_DOWN:
+                case KeyEvent.KEYCODE_VOLUME_MUTE:
+                case KeyEvent.KEYCODE_POWER:
+                case KeyEvent.KEYCODE_CAMERA:
+                case KeyEvent.KEYCODE_MENU:
+                    shouldCapture = true;
+                    break;
+            }
+            
+            if (shouldCapture) {
+                // 支持长按：分别发送按下、重复、抬起事件
+                if (action == KeyEvent.ACTION_DOWN) {
+                    int repeat = event.getRepeatCount();
+                    if (repeat == 0) {
+                        // 首次按下
+                        Log.d("Scrcpy", "Key DOWN: " + KeyEvent.keyCodeToString(keyCode));
+                        scrcpy.sendKeyeventWithAction(keyCode, 1, 0);  // action=1 表示按下
+                    } else {
+                        // 长按重复
+                        Log.d("Scrcpy", "Key REPEAT: " + KeyEvent.keyCodeToString(keyCode) + " count=" + repeat);
+                        scrcpy.sendKeyeventWithAction(keyCode, 3, repeat);  // action=3 表示重复
+                    }
+                } else if (action == KeyEvent.ACTION_UP) {
+                    // 抬起
+                    Log.d("Scrcpy", "Key UP: " + KeyEvent.keyCodeToString(keyCode));
+                    scrcpy.sendKeyeventWithAction(keyCode, 2, 0);  // action=2 表示抬起
+                }
+                // 返回true表示已消费该事件，不会在本机上执行
+                return true;
+            }
+        }
+        
+        // 其他按键按默认方式处理
+        return super.dispatchKeyEvent(event);
     }
 
     private void connectScrcpyServer(String serverAdr) {

@@ -221,7 +221,21 @@ public class Scrcpy extends Service {
 
     public void sendKeyevent(int keycode) {
         // Server expects a fixed 5-int control message (20 bytes)
-        int[] buf = new int[]{keycode, 0, 0, 0, 0};
+        // 默认发送单击事件（action=0 表示单击，服务端会自动发送按下+抬起）
+        sendKeyeventWithAction(keycode, 0, 0);
+    }
+
+    /**
+     * 发送按键事件到远程设备，支持指定 action
+     * @param keycode 按键码
+     * @param action 0=单击(按下+抬起), 1=按下(ACTION_DOWN), 2=抬起(ACTION_UP), 3=重复(ACTION_DOWN with repeat)
+     * @param repeat 重复次数（长按时使用）
+     */
+    public void sendKeyeventWithAction(int keycode, int action, int repeat) {
+        // buffer[0]=keycode, buffer[1]=action|repeat组合, buffer[2]=0, buffer[3]=0, buffer[4]=0
+        // action 存在低8位，repeat 存在高8位
+        int actionRepeat = (repeat << 8) | (action & 0xFF);
+        int[] buf = new int[]{keycode, actionRepeat, 0, 0, 0};
 
         final byte[] array = new byte[buf.length * 4];   // https://stackoverflow.com/questions/2183240/java-integer-to-byte-array
         for (int j = 0; j < buf.length; j++) {
