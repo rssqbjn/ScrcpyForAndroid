@@ -22,6 +22,7 @@ import java.io.DataOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.net.ConnectException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.util.LinkedList;
@@ -264,6 +265,7 @@ public class Scrcpy extends Service {
         boolean firstConnect = true;
         int attempts = 50;
         int controlPort = port + 1;
+        int consecutiveConnectionRefused = 0;  // 连续连接被拒绝的次数
         while (attempts > 0) {
             try {
                 Log.e("Scrcpy", "Connecting to " + LOCAL_IP);
@@ -276,6 +278,7 @@ public class Scrcpy extends Service {
                 }
 
                 Log.e("Scrcpy", "Connecting to " + LOCAL_IP + " success");
+                consecutiveConnectionRefused = 0;  // 连接成功，重置连接被拒绝计数
 
                 // 能够正常进行连接，说明可能建立了 tcp 连接，需要等待数据
                 // 一次等待时间为 2s ，最多等待五次，也就是 10秒
@@ -321,6 +324,25 @@ public class Scrcpy extends Service {
             } catch (Exception e) {
                 e.printStackTrace();
                 if (LetServceRunning.get()) {
+                    // 检查是否是连接被拒绝的错误（服务端已经停止）
+                    String errorMsg = e.getMessage();
+                    boolean isConnectionRefused = (e instanceof ConnectException) ||
+                        (errorMsg != null && (errorMsg.contains("ECONNREFUSED") || errorMsg.contains("Connection refused")));
+                    
+                    if (isConnectionRefused) {
+                        consecutiveConnectionRefused++;
+                        Log.e("Scrcpy", "Connection refused, count: " + consecutiveConnectionRefused);
+                        // 如果连续3次连接被拒绝，说明服务端已经停止，直接退出
+                        if (consecutiveConnectionRefused >= 3) {
+                            Log.e("Scrcpy", "Server seems to be down, stopping reconnection attempts");
+                            socket_status = false;
+                            if (serviceCallbacks != null) {
+                                serviceCallbacks.errorDisconnect();
+                            }
+                            return;
+                        }
+                    }
+                    
                     attempts--;
                     if (attempts < 0) {
                         socket_status = false;
@@ -331,7 +353,8 @@ public class Scrcpy extends Service {
                         return;
                     }
                     try {
-                        Thread.sleep(100);
+                        // 增加重试间隔，避免疯狂重试，连接被拒绝时等待更长时间
+                        Thread.sleep(isConnectionRefused ? 500 : 100);
                     } catch (InterruptedException ignore) {
                     }
                 }

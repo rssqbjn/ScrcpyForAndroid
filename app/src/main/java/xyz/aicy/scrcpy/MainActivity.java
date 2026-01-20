@@ -177,6 +177,10 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             resumeScrcpy = savedInstanceState.getBoolean("resumeScrcpy");
             screenHeight = savedInstanceState.getInt("screenHeight");
             screenWidth = savedInstanceState.getInt("screenWidth");
+        } else {
+            // 冷启动（APP被杀死后重新打开），清除自动重连标志
+            // 这样可以防止用户清理后台后重新打开APP时自动重连
+            PreUtils.put(this, Constant.CONTROL_AUTO_RECONNECT, false);
         }
         // 读取屏幕是横屏、还是竖屏
         landscape = getApplication().getResources().getConfiguration().orientation
