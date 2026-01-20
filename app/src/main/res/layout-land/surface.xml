@@ -60,15 +60,16 @@
             android:textSize="20sp"
             style="?android:attr/buttonBarButtonStyle" />
 
-        <Button
+        <ImageButton
             android:id="@+id/power_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_weight="1"
             android:background="@android:color/background_dark"
-            android:text="@string/power_button"
-            android:textColor="#FF5555"
-            android:textSize="24sp"
+            android:contentDescription="@string/power_button"
+            android:scaleType="center"
+            android:src="@drawable/ic_power"
+            android:tint="#FF5555"
             style="?android:attr/buttonBarButtonStyle" />
 
     </LinearLayout>

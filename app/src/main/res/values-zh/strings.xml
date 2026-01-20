@@ -14,6 +14,7 @@
     <string name="switch1">底部控制按钮 (返回键)</string>
     <string name="switch_screen_off">息屏控制</string>
     <string name="switch_audio_forward">音频转发</string>
+    <string name="switch_capture_keys">音量控制</string>
     <string name="connect_tips">Tips: 需要开启手机的无线调试\n\t\t重置adb端口命令:adb tcpip 5555</string>
     <string name="please_wait">连接中 …</string>
 
@@ -24,6 +25,6 @@
     <string name="disconnect_ask">检测到连接已断开，请退出后重新连接</string>
 
     <string name="need_register">需要注册</string>
+    <string name="power_button">电源</string>
 </resources>
-
 

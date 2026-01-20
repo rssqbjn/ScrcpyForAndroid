@@ -14,6 +14,7 @@
   <string name="switch1">下部のコントロールボタン (戻るボタン)</string>
   <string name="switch_screen_off">スリープ制御</string>
     <string name="switch_audio_forward">オーディオ転送</string>
+    <string name="switch_capture_keys">音量コントロール</string>
     <string name="connect_tips">ヒント: デバイスでワイヤレスデバッグを有効化する必要があります。\n\t\tadb ポートコマンドのリセット: adb tcpip 5555</string>
   <string name="please_wait">接続中 …</string>
   <string name="connect_faild">接続に失敗しました</string>
@@ -52,4 +53,5 @@
     <item>2048000</item>
     <item>1024000</item>
   </integer-array>
+    <string name="power_button">電源</string>
 </resources>
