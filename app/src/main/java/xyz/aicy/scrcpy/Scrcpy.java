@@ -261,6 +261,17 @@ public class Scrcpy extends Service {
         sendKeyevent(999);
     }
 
+    /**
+     * Send display power toggle command to remote device
+     * This toggles display power without using real POWER key (avoids unlocking screen)
+     * Used in screen-off control mode to prevent waking up the device
+     */
+    public void sendDisplayPowerToggleCommand() {
+        // Use special keycode 1000 to signal display power toggle command
+        Log.d("Scrcpy", "Sending display-power-toggle command (keycode 1000)");
+        sendKeyevent(1000);
+    }
+
     private void startConnection(String ip, int port, int delay) {
 
         videoDecoder = new VideoDecoder();

@@ -30,6 +30,11 @@ public class EventController {
     private float then;
     private boolean hit = false;
     private boolean proximity = false;
+    
+    // 跟踪通过 setDisplayPower 设置的显示电源状态
+    // 因为 isScreenOn() 检查的是系统级屏幕状态，而 setDisplayPower 只控制显示器硬件
+    // 两者状态可能不一致，所以需要单独跟踪
+    private boolean displayPowerOn = true;
 
     public EventController(Device device, DroidConnection connection) {
         this.device = device;
@@ -80,8 +85,26 @@ public class EventController {
                     } else if (buffer[0] == 999) {
                         // Special command: turn screen off (prefer display power, fallback to power key)
                         Ln.i("Received turn-screen-off command");
-                        if (!device.setDisplayPower(false)) {
+                        if (device.setDisplayPower(false)) {
+                            displayPowerOn = false;
+                        } else {
                             Ln.w("Display power off request failed; leaving screen on to avoid locking");
+                        }
+                    } else if (buffer[0] == 1000) {
+                        // Special command: power key with screen-off mode
+                        // Send real POWER key to lock/unlock device, then turn display off again
+                        Ln.i("Received screen-off-mode power command");
+                        // Send real POWER key event
+                        injectKeycode(KeyEvent.KEYCODE_POWER);
+                        // Wait a bit for the system to process the power key
+                        try {
+                            Thread.sleep(200);
+                        } catch (InterruptedException ignored) {
+                        }
+                        // Turn display off again to keep screen black
+                        if (device.setDisplayPower(false)) {
+                            displayPowerOn = false;
+                            Ln.i("Display turned off after power key");
                         }
                     } else {
                         // buffer[1] 包含 action 和 repeat 信息

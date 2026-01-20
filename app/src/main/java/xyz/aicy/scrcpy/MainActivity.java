@@ -307,7 +307,6 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         final Switch aSwitch1 = findViewById(R.id.switch1);
         final Switch switchScreenOff = findViewById(R.id.switch_screen_off);
         final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
-        final Switch switchCaptureKeys = findViewById(R.id.switch_capture_keys);
         String historySpServerAdr = PreUtils.get(context, Constant.CONTROL_REMOTE_ADDR, "");
         if (TextUtils.isEmpty(historySpServerAdr)) {
             String[] historyList = getHistoryList();
@@ -321,7 +320,6 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         aSwitch1.setChecked(PreUtils.get(context, Constant.CONTROL_NAV, false));
         switchScreenOff.setChecked(PreUtils.get(context, Constant.CONTROL_SCREEN_OFF, false));
         switchAudioForward.setChecked(PreUtils.get(context, Constant.CONTROL_AUDIO, true));
-        switchCaptureKeys.setChecked(PreUtils.get(context, Constant.CONTROL_CAPTURE_KEYS, false));
         setSpinner(R.array.options_resolution_values, R.id.spinner_video_resolution, Constant.PREFERENCE_SPINNER_RESOLUTION);
         setSpinner(R.array.options_bitrate_keys, R.id.spinner_video_bitrate, Constant.PREFERENCE_SPINNER_BITRATE);
         setSpinner(R.array.options_delay_keys, R.id.delay_control_spinner, Constant.PREFERENCE_SPINNER_DELAY);
@@ -431,9 +429,63 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             // 电源按钮 - 控制远程设备电源，支持长按（长按弹出关机菜单）
             final View powerButton = findViewById(R.id.power_button);
             if (powerButton != null) {
-                setupLongPressButton(powerButton, KeyEvent.KEYCODE_POWER);
+                setupPowerButton(powerButton);
             }
         }
+    }
+
+    /**
+     * 为电源按钮设置特殊处理
+     * 在息屏控制模式下，短按使用 display power toggle 而不是真实的 POWER 键，
+     * 这样可以避免唤醒并解锁设备
+     * 长按仍然使用真实的 POWER 键以支持弹出关机菜单等功能
+     */
+    @SuppressLint("ClickableViewAccessibility")
+    private void setupPowerButton(View button) {
+        final boolean[] isLongPress = {false};
+        
+        // 长按：发送真实的 POWER 键（用于弹出关机菜单等）
+        button.setOnLongClickListener(v -> {
+            isLongPress[0] = true;
+            Log.d("Scrcpy", "Power button long press DOWN");
+            scrcpy.sendKeyeventWithAction(KeyEvent.KEYCODE_POWER, 1, 0);  // 发送按下事件
+            return true;
+        });
+        
+        button.setOnTouchListener((v, event) -> {
+            if (event.getAction() == MotionEvent.ACTION_UP) {
+                if (isLongPress[0]) {
+                    // 长按后松开，发送抬起事件
+                    Log.d("Scrcpy", "Power button long press UP");
+                    scrcpy.sendKeyeventWithAction(KeyEvent.KEYCODE_POWER, 2, 0);  // 发送抬起事件
+                    isLongPress[0] = false;
+                    return true;
+                }
+            } else if (event.getAction() == MotionEvent.ACTION_CANCEL) {
+                if (isLongPress[0]) {
+                    // 取消时也发送抬起事件
+                    scrcpy.sendKeyeventWithAction(KeyEvent.KEYCODE_POWER, 2, 0);
+                    isLongPress[0] = false;
+                }
+            }
+            return false;  // 返回false让其他事件继续处理（如click）
+        });
+        
+        // 短按：根据息屏控制模式决定发送的命令
+        button.setOnClickListener(v -> {
+            if (!isLongPress[0]) {
+                boolean screenOffMode = PreUtils.get(context, Constant.CONTROL_SCREEN_OFF, false);
+                if (screenOffMode) {
+                    // 息屏控制模式：使用 display power toggle，不会解锁设备
+                    Log.d("Scrcpy", "Power button click in screen-off mode: sending display power toggle");
+                    scrcpy.sendDisplayPowerToggleCommand();
+                } else {
+                    // 普通模式：发送真实的 POWER 键
+                    Log.d("Scrcpy", "Power button click: sending KEYCODE_POWER");
+                    scrcpy.sendKeyevent(KeyEvent.KEYCODE_POWER);
+                }
+            }
+        });
     }
 
     /**
@@ -525,13 +577,10 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         boolean screenOff = switchScreenOff.isChecked();
         final Switch switchAudioForward = findViewById(R.id.switch_audio_forward);
         boolean audioForward = switchAudioForward.isChecked();
-        final Switch switchCaptureKeys = findViewById(R.id.switch_capture_keys);
-        boolean captureKeys = switchCaptureKeys.isChecked();
         PreUtils.put(context, Constant.CONTROL_NO, no_control);
         PreUtils.put(context, Constant.CONTROL_NAV, nav);
         PreUtils.put(context, Constant.CONTROL_SCREEN_OFF, screenOff);
         PreUtils.put(context, Constant.CONTROL_AUDIO, audioForward);
-        PreUtils.put(context, Constant.CONTROL_CAPTURE_KEYS, captureKeys);
 
         final String[] videoResolutions = getResources().getStringArray(R.array.options_resolution_values)[videoResolutionSpinner.getSelectedItemPosition()].split("x");
         screenHeight = Integer.parseInt(videoResolutions[0]);
@@ -769,9 +818,8 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         int keyCode = event.getKeyCode();
         int action = event.getAction();
         
-        // 只有在连接状态下且开启了捕获按键功能时才处理
+        // 只有在连接状态下才处理音量键转发
         if (serviceBound && scrcpy != null && scrcpy.check_socket_connection() 
-                && PreUtils.get(context, Constant.CONTROL_CAPTURE_KEYS, false)
                 && !PreUtils.get(context, Constant.CONTROL_NO, false)) {  // 观看模式下不转发按键
             
             // 判断是否是我们要捕获的按键
