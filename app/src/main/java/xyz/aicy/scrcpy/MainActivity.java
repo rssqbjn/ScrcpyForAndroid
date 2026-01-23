@@ -1031,7 +1031,9 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             // errorCount = 0;
             Log.i("Scrcpy", "连接错误次数: " + errorCount);
             // 错误 3 次，则重启 adb 服务
-            App.startAdbServer();
+            if (errorCount >= 3) {
+                App.startAdbServer();
+            }
         }
         // 如果是无头模式，自行弹出重连选项
         if (headlessMode && !resumeScrcpy && !result_of_Rotation) {

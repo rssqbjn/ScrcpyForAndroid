@@ -93,6 +93,14 @@ public final class Server {
             }
         });
 
+        // Write a marker as early as possible to confirm the process started
+        try {
+            Process startedCmd = Runtime.getRuntime().exec(new String[]{"sh", "-c", "echo started >/data/local/tmp/scrcpy.started"});
+            startedCmd.waitFor();
+        } catch (Exception e) {
+            Ln.w("Failed to write started marker: " + e.getMessage());
+        }
+
         try {
             Process cmd = Runtime.getRuntime().exec("rm /data/local/tmp/scrcpy-server.jar");
             cmd.waitFor();

@@ -25,32 +25,43 @@ public final class DroidConnection implements Closeable {
         this.controlInputStream = new DataInputStream(controlSocket.getInputStream());
     }
 
-    private static Socket listenAndAccept(int port) throws IOException {
-        ServerSocket serverSocket = new ServerSocket(port);
-        Socket sock;
+    public static DroidConnection open(String ip) throws IOException {
+        ServerSocket mediaServer = new ServerSocket(MEDIA_PORT);
+        ServerSocket controlServer = new ServerSocket(CONTROL_PORT);
         try {
-            sock = serverSocket.accept();
+            writeReadyMarker();
+            Socket media = mediaServer.accept();
+            if (!media.getInetAddress().toString().equals(ip)) {
+                Ln.w("media socket connect address != " + ip);
+            }
+
+            Socket control = controlServer.accept();
+            if (!control.getInetAddress().toString().equals(ip)) {
+                Ln.w("control socket connect address != " + ip);
+            }
+
+            if (media.getInetAddress().toString().isEmpty() || control.getInetAddress().toString().isEmpty()) {
+                throw new IOException("Invalid socket address");
+            }
+            return new DroidConnection(media, control);
         } finally {
-            serverSocket.close();
+            try {
+                mediaServer.close();
+            } catch (IOException ignore) {
+            }
+            try {
+                controlServer.close();
+            } catch (IOException ignore) {
+            }
         }
-        return sock;
     }
 
-    public static DroidConnection open(String ip) throws IOException {
-        Socket media = listenAndAccept(MEDIA_PORT);
-        if (!media.getInetAddress().toString().equals(ip)) {
-            Ln.w("media socket connect address != " + ip);
+    private static void writeReadyMarker() {
+        try {
+            Runtime.getRuntime().exec(new String[]{"sh", "-c", "echo ready >/data/local/tmp/scrcpy.ready"});
+        } catch (IOException e) {
+            Ln.w("Failed to write ready marker: " + e.getMessage());
         }
-
-        Socket control = listenAndAccept(CONTROL_PORT);
-        if (!control.getInetAddress().toString().equals(ip)) {
-            Ln.w("control socket connect address != " + ip);
-        }
-
-        if (media.getInetAddress().toString().isEmpty() || control.getInetAddress().toString().isEmpty()) {
-            throw new IOException("Invalid socket address");
-        }
-        return new DroidConnection(media, control);
     }
 
     public void close() throws IOException {

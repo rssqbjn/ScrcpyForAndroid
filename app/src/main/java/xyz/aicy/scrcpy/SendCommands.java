@@ -45,29 +45,16 @@ public class SendCommands {
                                int size, boolean audioEnabled) {
         this.context = context;
         status = 1;
-        String[] commands = new String[]{
-                "-s", ip + ":" + port,
-                "shell",
-                " CLASSPATH=/data/local/tmp/scrcpy-server.jar",
-                "app_process",
-                "/",
-                "org.server.scrcpy.Server",
-                "/" + localip,
-                Long.toString(size),
-                Long.toString(bitrate),
-                "false",
-                Boolean.toString(audioEnabled) + ";"
-        };
         ThreadUtils.execute(() -> {
             try {
                 // 新版的复制方式
-                newAdbServerStart(context, ip, localip, port, forwardport, commands);
+                newAdbServerStart(context, ip, localip, port, forwardport, bitrate, size, audioEnabled);
             } catch (Exception e) {
                 e.printStackTrace();
             }
         });
         int count = 0;
-        while (status == 1 && count < 50) {
+        while (status == 1 && count < 100) {
             Log.e("ADB", "Connecting...");
             try {
                 Thread.sleep(100);
@@ -101,7 +88,7 @@ public class SendCommands {
     }
 
 
-    private void newAdbServerStart(Context context, String ip, String localip, int port, int serverport, String[] command) {
+    private void newAdbServerStart(Context context, String ip, String localip, int port, int serverport, int bitrate, int size, boolean audioEnabled) {
         String targetDevice = ip + ":" + port;
         String connectRet = App.adbCmd("connect", targetDevice);
         Log.i("Scrcpy", "adb connect " + targetDevice + " result: " + connectRet);
@@ -122,6 +109,13 @@ public class SendCommands {
             return;
         }
 
+        // 清理旧的标记与日志，避免误判
+        App.adbCmd("-s", targetDevice, "shell", "rm", "-f",
+                "/data/local/tmp/scrcpy.ready",
+                "/data/local/tmp/scrcpy.started",
+                "/data/local/tmp/scrcpy.shell",
+                "/data/local/tmp/scrcpy.log");
+
         String adbTextCmd = App.adbCmd("-s", targetDevice, "shell", "ls", "-alh", "/data/local/tmp/scrcpy-server.jar");
         Log.i("Scrcpy", "ls result: " + adbTextCmd);
         // 检查文件是否存在：如果返回为空或包含 "No such file" 则表示文件不存在
@@ -136,10 +130,48 @@ public class SendCommands {
         String forwardRet2 = App.adbCmd("-s", targetDevice, "forward", "tcp:" + (serverport + 1), "tcp:" + 7008);
         Log.i("Scrcpy", "forward result: " + forwardRet1 + ", " + forwardRet2);
 
-        status = 0;
         // 执行启动命令
         Log.i("Scrcpy", "Starting server with command");
-        App.adbCmd(command);
+        String ipArg = "/" + localip;
+        String startCmd = "echo shell_start >/data/local/tmp/scrcpy.shell; "
+                + "export CLASSPATH=/data/local/tmp/scrcpy-server.jar; "
+                + "/system/bin/app_process / org.server.scrcpy.Server "
+                + ipArg + " " + size + " " + bitrate + " false " + audioEnabled
+                + " >/data/local/tmp/scrcpy.log 2>&1 &";
+        App.adbCmd("-s", targetDevice, "shell", "sh", "-c", startCmd);
+
+        // 等待 server ready 标记
+        int readyCount = 0;
+        while (readyCount < 100) {
+            String readyRet = App.adbCmd("-s", targetDevice, "shell", "ls", "/data/local/tmp/scrcpy.ready");
+            if (!TextUtils.isEmpty(readyRet) && readyRet.contains("scrcpy.ready")) {
+                status = 0;
+                return;
+            }
+            try {
+                Thread.sleep(100);
+            } catch (InterruptedException ignored) {
+            }
+            readyCount++;
+        }
+        Log.e("Scrcpy", "Server ready marker timeout");
+        String startedRet = App.adbCmd("-s", targetDevice, "shell", "sh", "-c",
+                "if [ -f /data/local/tmp/scrcpy.started ]; then echo started_exists; else echo started_missing; fi");
+        Log.e("Scrcpy", "Server started marker: " + startedRet);
+        String shellRet = App.adbCmd("-s", targetDevice, "shell", "sh", "-c",
+                "if [ -f /data/local/tmp/scrcpy.shell ]; then echo shell_exists; else echo shell_missing; fi");
+        Log.e("Scrcpy", "Shell marker: " + shellRet);
+        String logRet = App.adbCmd("-s", targetDevice, "shell", "sh", "-c",
+                "if [ -f /data/local/tmp/scrcpy.log ]; then echo log_exists; else echo log_missing; fi");
+        Log.e("Scrcpy", "Server log file: " + logRet);
+        String serverLog = App.adbCmd("-s", targetDevice, "shell", "sh", "-c",
+                "if [ -f /data/local/tmp/scrcpy.log ]; then cat /data/local/tmp/scrcpy.log; fi");
+        if (!TextUtils.isEmpty(serverLog)) {
+            Log.e("Scrcpy", "Server log:\n" + serverLog);
+        } else {
+            Log.e("Scrcpy", "Server log is empty or missing");
+        }
+        status = 2;
     }
 
 }
