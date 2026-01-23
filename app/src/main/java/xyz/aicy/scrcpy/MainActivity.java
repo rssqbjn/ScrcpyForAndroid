@@ -722,13 +722,28 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
         super.onPause();
         if (serviceBound) {
             scrcpy.pause();
-            if (!isChangingConfigurations()) {
-                resumeScrcpy = true;
-                PreUtils.put(context, Constant.CONTROL_AUTO_RECONNECT, true);
-            }
-            // 返回到主页面，属于用户主动断开场景
+            // 切后台保持连接，仅暂停解码与渲染
+        }
+    }
+
+    @Override
+    protected void onStart() {
+        super.onStart();
+        if (serviceBound && scrcpy != null) {
+            scrcpy.setBackgroundMode(false);
+        }
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        // 只有真正退出时才断开连接
+        if (isFinishing() && serviceBound) {
             showMainView(true);
             first_time = true;
+            errorCount = 0;  // 主动断开连接，将错误计数重置为 0
+        } else if (serviceBound && scrcpy != null) {
+            scrcpy.setBackgroundMode(true);
         }
     }
 

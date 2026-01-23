@@ -58,6 +58,8 @@ public class Scrcpy extends Service {
     private ServiceCallbacks serviceCallbacks;
     private final int[] remote_dev_resolution = new int[2];
     private boolean socket_status = false;
+    private volatile boolean backgroundMode = false;
+    private static final int BACKGROUND_SLEEP_MS = 30;
 
 
     @Override
@@ -130,6 +132,15 @@ public class Scrcpy extends Service {
             audioDecoder.start();
         }
         updateAvailable.set(true);
+    }
+
+    public void setBackgroundMode(boolean enable) {
+        backgroundMode = enable;
+        if (enable) {
+            pause();
+        } else {
+            resume();
+        }
     }
 
     public void StopService() {
@@ -426,6 +437,7 @@ public class Scrcpy extends Service {
     private void loop(DataInputStream mediaInputStream, DataOutputStream controlOutputStream, int delay) throws InterruptedException {
         VideoPacket.StreamSettings streamSettings = null;
         byte[] packetSize = new byte[4];
+        byte[] skipBuffer = new byte[16 * 1024];
 
         // 由于网络传输存在延迟，丢弃数据包计数
         long lastVideoOffset = 0;
@@ -474,6 +486,14 @@ public class Scrcpy extends Service {
                         }
                         LetServceRunning.set(false);
                         return;
+                    }
+                    if (backgroundMode) {
+                        skipFully(mediaInputStream, size, skipBuffer);
+                        try {
+                            Thread.sleep(BACKGROUND_SLEEP_MS);
+                        } catch (InterruptedException ignore) {
+                        }
+                        continue;
                     }
                     byte[] packet = new byte[size];
                     mediaInputStream.readFully(packet, 0, size);
@@ -569,6 +589,18 @@ public class Scrcpy extends Service {
                     Thread.sleep(5);
                 }
             }
+        }
+    }
+
+    private void skipFully(InputStream inputStream, int size, byte[] buffer) throws IOException {
+        int remaining = size;
+        while (remaining > 0) {
+            int toRead = Math.min(remaining, buffer.length);
+            int read = inputStream.read(buffer, 0, toRead);
+            if (read < 0) {
+                throw new IOException("EOF while skipping");
+            }
+            remaining -= read;
         }
     }
 

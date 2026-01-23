@@ -13,3 +13,4 @@ app/src/main/assets/scrcpy-server.jar
 *.jks
 scrcpy.jks.b64
 /scrcpy-master/
+/adbTools-main/
