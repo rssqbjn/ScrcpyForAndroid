@@ -9,8 +9,8 @@ android {
         applicationId "org.server.scrcpy"
         minSdkVersion 21
         targetSdkVersion 33
-        versionCode 6
-        versionName "1.2.6"
+        versionCode version_code
+        versionName app_version
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
 
     }

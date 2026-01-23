@@ -10,8 +10,7 @@ android {
     defaultConfig {
         minSdkVersion 21
         targetSdkVersion 33
-        versionCode 17
-        versionName "1.2.2"
+        versionCode version_code
         testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
         setProperty("archivesBaseName", "scrcpy")
         
@@ -19,6 +18,7 @@ android {
         ndk {
             // This ensures proper alignment
         }
+        versionName app_version
     }
     signingConfigs {
         release {

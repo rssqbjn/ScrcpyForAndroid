@@ -2,9 +2,8 @@ package org.server.scrcpy;
 
 
 import java.io.Closeable;
-import java.io.EOFException;
+import java.io.DataInputStream;
 import java.io.IOException;
-import java.io.InputStream;
 import java.io.OutputStream;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -17,13 +16,13 @@ public final class DroidConnection implements Closeable {
     private Socket mediaSocket;
     private Socket controlSocket;
     private OutputStream mediaOutputStream;
-    private InputStream controlInputStream;
+    private DataInputStream controlInputStream;
 
     private DroidConnection(Socket mediaSocket, Socket controlSocket) throws IOException {
         this.mediaSocket = mediaSocket;
         this.controlSocket = controlSocket;
         this.mediaOutputStream = mediaSocket.getOutputStream();
-        this.controlInputStream = controlSocket.getInputStream();
+        this.controlInputStream = new DataInputStream(controlSocket.getInputStream());
     }
 
     private static Socket listenAndAccept(int port) throws IOException {
@@ -87,10 +86,8 @@ public final class DroidConnection implements Closeable {
     public int[] NewreceiveControlEvent() throws IOException {
 
         byte[] buf = new byte[20];
-        int n = controlInputStream.read(buf, 0, 20);
-        if (n == -1) {
-            throw new EOFException("Event controller socket closed");
-        }
+        // 使用 readFully 确保读取完整的 20 字节，避免 TCP 分片导致数据不完整
+        controlInputStream.readFully(buf, 0, 20);
 
         final int[] array = new int[buf.length / 4];
         for (int i = 0; i < array.length; i++)

@@ -333,7 +333,7 @@ public class Scrcpy extends Service {
             try {
                 Log.e("Scrcpy", "Connecting to " + LOCAL_IP);
                 mediaSocket = new Socket();
-                mediaSocket.connect(new InetSocketAddress(ip, port), 5000); // 设置超时5000毫秒
+                mediaSocket.connect(new InetSocketAddress(ip, port), 5000); // 设置连接超时5000毫秒
                 controlSocket = new Socket();
                 controlSocket.connect(new InetSocketAddress(ip, controlPort), 5000); // 控制通道
                 if (!LetServceRunning.get()) {
@@ -344,30 +344,36 @@ public class Scrcpy extends Service {
                 consecutiveConnectionRefused = 0;  // 连接成功，重置连接被拒绝计数
 
                 // 能够正常进行连接，说明可能建立了 tcp 连接，需要等待数据
-                // 一次等待时间为 2s ，最多等待五次，也就是 10秒
-                if (firstConnect) {  // 此处有 while 循环，不能一直设置为10
+                if (firstConnect) {
                     firstConnect = false;
-                    // waitResolutionCount 为 10，等待100ms 也就是共计一秒钟，设置attempts 为 5，也就是 5秒后则退出
                     attempts = 5;
                 }
+                
+                // 设置 socket 读取超时，替代不可靠的 available() 轮询
+                // 服务端启动可能需要一些时间，设置较长的超时
+                mediaSocket.setSoTimeout(5000);  // 5秒读取超时
+                
                 mediaInputStream = new DataInputStream(mediaSocket.getInputStream());
-                int waitResolutionCount = 10;
-                while (mediaInputStream.available() <= 0 && waitResolutionCount > 0) {
-                    waitResolutionCount--;
-                    try {
-                        Thread.sleep(100);
-                    } catch (InterruptedException ignore) {
-                    }
-                }
-                if (mediaInputStream.available() <= 0) {
-                    throw new IOException("can't read socket Resolution : " + attempts);
-                }
-
-
                 controlOutputStream = new DataOutputStream(controlSocket.getOutputStream());
-                attempts = 0;
+                
+                // 直接阻塞读取分辨率数据，不再使用 available() 轮询
+                // 服务端发送 8 字节 (2个int)，但为了兼容性读取16字节
                 byte[] buf = new byte[16];
-                mediaInputStream.read(buf, 0, 16);
+                int bytesRead = 0;
+                int toRead = 8;  // 服务端实际发送 8 字节（宽度和高度各4字节）
+                while (bytesRead < toRead) {
+                    int n = mediaInputStream.read(buf, bytesRead, toRead - bytesRead);
+                    if (n == -1) {
+                        throw new IOException("Connection closed while reading resolution");
+                    }
+                    bytesRead += n;
+                }
+                Log.d("Scrcpy", "Received resolution data: " + bytesRead + " bytes");
+                
+                // 恢复无限等待模式，后续数据流需要持续读取
+                mediaSocket.setSoTimeout(0);
+                
+                attempts = 0;
                 for (int i = 0; i < remote_dev_resolution.length; i++) {
                     remote_dev_resolution[i] = (((int) (buf[i * 4]) << 24) & 0xFF000000) |
                             (((int) (buf[i * 4 + 1]) << 16) & 0xFF0000) |
@@ -500,6 +506,7 @@ public class Scrcpy extends Service {
                     waitEvent = false;
                     try {
                         controlOutputStream.write(sendevent, 0, sendevent.length);
+                        controlOutputStream.flush();  // 确保数据立即发送，避免缓冲延迟
                     } catch (IOException e) {
                         Log.e("Scrcpy", "Control channel write failed, disconnecting", e);
                         if (serviceCallbacks != null) {

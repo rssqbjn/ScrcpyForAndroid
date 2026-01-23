@@ -102,28 +102,43 @@ public class SendCommands {
 
 
     private void newAdbServerStart(Context context, String ip, String localip, int port, int serverport, String[] command) {
-        App.adbCmd("connect", ip + ":" + port);
+        String targetDevice = ip + ":" + port;
+        String connectRet = App.adbCmd("connect", targetDevice);
+        Log.i("Scrcpy", "adb connect " + targetDevice + " result: " + connectRet);
 
         Log.i("Scrcpy", "adb devices: " + App.adbCmd("devices"));
+        
         // 复制server端到可执行目录
-        String pushRet = App.adbCmd("-s", ip + ":" + port, "push", new File(
-                context.getExternalFilesDir("scrcpy"), "scrcpy-server.jar"
-        ).getAbsolutePath(), "/data/local/tmp/scrcpy-server.jar");
-
+        File localJarFile = new File(context.getExternalFilesDir("scrcpy"), "scrcpy-server.jar");
+        Log.i("Scrcpy", "Local jar file: " + localJarFile.getAbsolutePath() + ", exists: " + localJarFile.exists() + ", size: " + localJarFile.length());
+        
+        String pushRet = App.adbCmd("-s", targetDevice, "push", localJarFile.getAbsolutePath(), "/data/local/tmp/scrcpy-server.jar");
         Log.i("Scrcpy", "pushRet: " + pushRet);
 
-        String adbTextCmd = App.adbCmd("-s", ip + ":" + port, "shell", "ls", "-alh", "/data/local/tmp/scrcpy-server.jar");
-        if (TextUtils.isEmpty(adbTextCmd)) {
+        // 检查 push 是否成功
+        if (pushRet == null || !pushRet.contains("file pushed")) {
+            Log.e("Scrcpy", "Push failed: " + pushRet);
+            status = 2;
+            return;
+        }
+
+        String adbTextCmd = App.adbCmd("-s", targetDevice, "shell", "ls", "-alh", "/data/local/tmp/scrcpy-server.jar");
+        Log.i("Scrcpy", "ls result: " + adbTextCmd);
+        // 检查文件是否存在：如果返回为空或包含 "No such file" 则表示文件不存在
+        if (TextUtils.isEmpty(adbTextCmd) || adbTextCmd.contains("No such file")) {
+            Log.e("Scrcpy", "Server file not found on remote device");
             status = 2;
             return;
         }
         // 开启本地端口 forward 转发
         Log.i("Scrcpy", "开启本地端口转发");
-        App.adbCmd("-s", ip + ":" + port, "forward", "tcp:" + serverport, "tcp:" + 7007);
-        App.adbCmd("-s", ip + ":" + port, "forward", "tcp:" + (serverport + 1), "tcp:" + 7008);
+        String forwardRet1 = App.adbCmd("-s", targetDevice, "forward", "tcp:" + serverport, "tcp:" + 7007);
+        String forwardRet2 = App.adbCmd("-s", targetDevice, "forward", "tcp:" + (serverport + 1), "tcp:" + 7008);
+        Log.i("Scrcpy", "forward result: " + forwardRet1 + ", " + forwardRet2);
 
         status = 0;
         // 执行启动命令
+        Log.i("Scrcpy", "Starting server with command");
         App.adbCmd(command);
     }
 
