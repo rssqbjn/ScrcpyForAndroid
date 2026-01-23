@@ -26,6 +26,7 @@ import android.view.Display;
 import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.Surface;
+import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.ViewConfiguration;
@@ -660,7 +661,27 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                         | View.SYSTEM_UI_FLAG_FULLSCREEN
                         | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY);
         surfaceView = findViewById(R.id.decoder_surface);
-        surface = surfaceView.getHolder().getSurface();
+        SurfaceHolder holder = surfaceView.getHolder();
+        surface = holder.getSurface();
+        holder.addCallback(new SurfaceHolder.Callback() {
+            @Override
+            public void surfaceCreated(SurfaceHolder holder) {
+                surface = holder.getSurface();
+                if (serviceBound && scrcpy != null) {
+                    scrcpy.setParms(surface, screenWidth, screenHeight);
+                }
+            }
+
+            @Override
+            public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+                surface = holder.getSurface();
+            }
+
+            @Override
+            public void surfaceDestroyed(SurfaceHolder holder) {
+                surface = null;
+            }
+        });
         final LinearLayout nav_bar = findViewById(R.id.nav_button_bar);
         if (PreUtils.get(context, Constant.CONTROL_NAV, false) &&
                 !PreUtils.get(context, Constant.CONTROL_NO, false)) {

@@ -60,6 +60,9 @@ public class Scrcpy extends Service {
     private boolean socket_status = false;
     private volatile boolean backgroundMode = false;
     private static final int BACKGROUND_SLEEP_MS = 30;
+    private volatile boolean pendingForegroundRefresh = false;
+    private volatile VideoPacket.StreamSettings cachedStreamSettings = null;
+    private volatile byte[] cachedKeyFrame = null;
 
 
     @Override
@@ -140,6 +143,8 @@ public class Scrcpy extends Service {
             pause();
         } else {
             resume();
+            pendingForegroundRefresh = true;
+            updateAvailable.set(true);
         }
     }
 
@@ -437,7 +442,6 @@ public class Scrcpy extends Service {
     private void loop(DataInputStream mediaInputStream, DataOutputStream controlOutputStream, int delay) throws InterruptedException {
         VideoPacket.StreamSettings streamSettings = null;
         byte[] packetSize = new byte[4];
-        byte[] skipBuffer = new byte[16 * 1024];
 
         // 由于网络传输存在延迟，丢弃数据包计数
         long lastVideoOffset = 0;
@@ -448,6 +452,27 @@ public class Scrcpy extends Service {
         while (LetServceRunning.get()) {
             boolean waitEvent = true;
             try {
+                if (!backgroundMode && pendingForegroundRefresh) {
+                    if (surface == null || !surface.isValid()) {
+                        try {
+                            Thread.sleep(5);
+                        } catch (InterruptedException ignore) {
+                        }
+                        continue;
+                    }
+                    if (cachedStreamSettings != null) {
+                        streamSettings = cachedStreamSettings;
+                        videoDecoder.configure(surface, screenWidth, screenHeight,
+                                streamSettings.sps, streamSettings.pps);
+                        if (cachedKeyFrame != null) {
+                            VideoPacket key = VideoPacket.readHead(cachedKeyFrame);
+                            videoDecoder.decodeSample(cachedKeyFrame, VideoPacket.getHeadLen(),
+                                    cachedKeyFrame.length - VideoPacket.getHeadLen(),
+                                    0, key.flag.getFlag());
+                        }
+                    }
+                    pendingForegroundRefresh = false;
+                }
                 byte[] sendevent = event.poll();
                 if (sendevent != null) {
                     waitEvent = false;
@@ -488,7 +513,22 @@ public class Scrcpy extends Service {
                         return;
                     }
                     if (backgroundMode) {
-                        skipFully(mediaInputStream, size, skipBuffer);
+                        byte[] packet = new byte[size];
+                        mediaInputStream.readFully(packet, 0, size);
+                        if (MediaPacket.Type.getType(packet[0]) == MediaPacket.Type.VIDEO) {
+                            VideoPacket videoPacket = VideoPacket.readHead(packet);
+                            if (videoPacket.flag == VideoPacket.Flag.CONFIG) {
+                                int dataLength = packet.length - VideoPacket.getHeadLen();
+                                byte[] data = new byte[dataLength];
+                                System.arraycopy(packet, VideoPacket.getHeadLen(), data, 0, dataLength);
+                                VideoPacket.StreamSettings settings = VideoPacket.getStreamSettings(data);
+                                if (settings != null && settings.sps != null && settings.pps != null) {
+                                    cachedStreamSettings = settings;
+                                }
+                            } else if (videoPacket.flag == VideoPacket.Flag.KEY_FRAME) {
+                                cachedKeyFrame = packet;
+                            }
+                        }
                         try {
                             Thread.sleep(BACKGROUND_SLEEP_MS);
                         } catch (InterruptedException ignore) {
@@ -589,18 +629,6 @@ public class Scrcpy extends Service {
                     Thread.sleep(5);
                 }
             }
-        }
-    }
-
-    private void skipFully(InputStream inputStream, int size, byte[] buffer) throws IOException {
-        int remaining = size;
-        while (remaining > 0) {
-            int toRead = Math.min(remaining, buffer.length);
-            int read = inputStream.read(buffer, 0, toRead);
-            if (read < 0) {
-                throw new IOException("EOF while skipping");
-            }
-            remaining -= read;
         }
     }
 

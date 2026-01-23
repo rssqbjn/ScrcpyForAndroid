@@ -65,7 +65,7 @@ public class VideoDecoder {
         private void configure(Surface surface, int width, int height, ByteBuffer csd0, ByteBuffer csd1) {
             int csd0Len = csd0 == null ? -1 : csd0.remaining();
             int csd1Len = csd1 == null ? -1 : csd1.remaining();
-            if (surface == null || csd0 == null || csd1 == null || csd0Len <= 0 || csd1Len <= 0) {
+            if (surface == null || !surface.isValid() || csd0 == null || csd1 == null || csd0Len <= 0 || csd1Len <= 0) {
                 Log.w("Scrcpy", "Video configure skipped: surface=" + (surface != null)
                         + " csd0=" + csd0Len + " csd1=" + csd1Len);
                 return;
