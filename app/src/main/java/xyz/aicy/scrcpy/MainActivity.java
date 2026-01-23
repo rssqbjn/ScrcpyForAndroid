@@ -51,6 +51,8 @@ import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import android.os.Handler;
+import android.os.Looper;
 
 
 public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, SensorEventListener {
@@ -83,6 +85,16 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
     private LinearLayout linearLayout;
 
     private int errorCount = 0;  // 连接失败错误的计数，错误超过一定次数重启服务
+    private final Handler backgroundHandler = new Handler(Looper.getMainLooper());
+    private final Runnable backgroundSuspendRunnable = new Runnable() {
+        @Override
+        public void run() {
+            if (serviceBound && scrcpy != null) {
+                scrcpy.sendStreamPauseCommand();
+                scrcpy.setStreamSuspended(true);
+            }
+        }
+    };
 
     private final ServiceConnection serviceConnection = new ServiceConnection() {
         @Override
@@ -750,8 +762,11 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
     @Override
     protected void onStart() {
         super.onStart();
+        backgroundHandler.removeCallbacks(backgroundSuspendRunnable);
         if (serviceBound && scrcpy != null) {
+            scrcpy.setStreamSuspended(false);
             scrcpy.setBackgroundMode(false);
+            scrcpy.sendStreamResumeCommand();
         }
     }
 
@@ -765,6 +780,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             errorCount = 0;  // 主动断开连接，将错误计数重置为 0
         } else if (serviceBound && scrcpy != null) {
             scrcpy.setBackgroundMode(true);
+            backgroundHandler.postDelayed(backgroundSuspendRunnable, 5000);
         }
     }
 

@@ -6,6 +6,7 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo;
 import android.media.MediaFormat;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.util.Log;
 import android.view.Surface;
@@ -32,6 +33,9 @@ public class ScreenEncoder implements Device.RotationListener {
     private static final int MICROSECONDS_IN_ONE_SECOND = 1_000_000;
 
     private final AtomicBoolean rotationChanged = new AtomicBoolean();
+    private final AtomicBoolean paused = new AtomicBoolean(false);
+    private final Object pauseLock = new Object();
+    private final AtomicBoolean requestSync = new AtomicBoolean(false);
 
     private int bitRate;
     private int frameRate;
@@ -109,6 +113,16 @@ public class ScreenEncoder implements Device.RotationListener {
 
     public boolean consumeRotationChange() {
         return rotationChanged.getAndSet(false);
+    }
+
+    public void setPaused(boolean pause) {
+        paused.set(pause);
+        if (!pause) {
+            requestSync.set(true);
+            synchronized (pauseLock) {
+                pauseLock.notifyAll();
+            }
+        }
     }
 
     /**
@@ -233,6 +247,25 @@ public class ScreenEncoder implements Device.RotationListener {
         boolean configSent = false;
         MediaCodec.BufferInfo bufferInfo = new MediaCodec.BufferInfo();
         while (!consumeRotationChange() && !eof) {
+            if (paused.get()) {
+                synchronized (pauseLock) {
+                    try {
+                        pauseLock.wait(250);
+                    } catch (InterruptedException ignored) {
+                    }
+                }
+                continue;
+            }
+            if (requestSync.getAndSet(false)) {
+                try {
+                    Bundle params = new Bundle();
+                    params.putInt(MediaCodec.PARAMETER_KEY_REQUEST_SYNC_FRAME, 0);
+                    codec.setParameters(params);
+                    Log.d("ScreenCapture", "Requested sync frame after resume");
+                } catch (Exception e) {
+                    Log.w("ScreenCapture", "Failed to request sync frame", e);
+                }
+            }
             int outputBufferId = codec.dequeueOutputBuffer(bufferInfo, -1);
             if (outputBufferId == MediaCodec.INFO_OUTPUT_FORMAT_CHANGED) {
                 MediaFormat outFormat = codec.getOutputFormat();

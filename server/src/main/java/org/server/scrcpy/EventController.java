@@ -21,6 +21,7 @@ public class EventController {
 
     private final Device device;
     private final DroidConnection connection;
+    private final ScreenEncoder screenEncoder;
     private final MotionEvent.PointerProperties[] pointerProperties = new MotionEvent.PointerProperties[PointersState.MAX_POINTERS];
     private final MotionEvent.PointerCoords[] pointerCoords = new MotionEvent.PointerCoords[PointersState.MAX_POINTERS];
     private long lastMouseDown;
@@ -36,9 +37,10 @@ public class EventController {
     // 两者状态可能不一致，所以需要单独跟踪
     private boolean displayPowerOn = true;
 
-    public EventController(Device device, DroidConnection connection) {
+    public EventController(Device device, DroidConnection connection, ScreenEncoder screenEncoder) {
         this.device = device;
         this.connection = connection;
+        this.screenEncoder = screenEncoder;
         initPointers();
     }
 
@@ -105,6 +107,18 @@ public class EventController {
                         if (device.setDisplayPower(false)) {
                             displayPowerOn = false;
                             Ln.i("Display turned off after power key");
+                        }
+                    } else if (buffer[0] == 1001) {
+                        // Special command: pause video stream
+                        Ln.i("Received pause-stream command");
+                        if (screenEncoder != null) {
+                            screenEncoder.setPaused(true);
+                        }
+                    } else if (buffer[0] == 1002) {
+                        // Special command: resume video stream
+                        Ln.i("Received resume-stream command");
+                        if (screenEncoder != null) {
+                            screenEncoder.setPaused(false);
                         }
                     } else {
                         // buffer[1] 包含 action 和 repeat 信息

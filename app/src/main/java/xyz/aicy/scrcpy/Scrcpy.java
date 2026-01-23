@@ -63,6 +63,8 @@ public class Scrcpy extends Service {
     private volatile boolean pendingForegroundRefresh = false;
     private volatile VideoPacket.StreamSettings cachedStreamSettings = null;
     private volatile byte[] cachedKeyFrame = null;
+    private volatile boolean suspendStream = false;
+    private static final int SUSPEND_SLEEP_MS = 50;
 
 
     @Override
@@ -146,6 +148,10 @@ public class Scrcpy extends Service {
             pendingForegroundRefresh = true;
             updateAvailable.set(true);
         }
+    }
+
+    public void setStreamSuspended(boolean enable) {
+        suspendStream = enable;
     }
 
     public void StopService() {
@@ -286,6 +292,22 @@ public class Scrcpy extends Service {
         // Use special keycode 1000 to signal display power toggle command
         Log.d("Scrcpy", "Sending display-power-toggle command (keycode 1000)");
         sendKeyevent(1000);
+    }
+
+    /**
+     * Pause video stream on server (reduce bandwidth/CPU while keeping connection)
+     */
+    public void sendStreamPauseCommand() {
+        Log.d("Scrcpy", "Sending pause-stream command (keycode 1001)");
+        sendKeyevent(1001);
+    }
+
+    /**
+     * Resume video stream on server
+     */
+    public void sendStreamResumeCommand() {
+        Log.d("Scrcpy", "Sending resume-stream command (keycode 1002)");
+        sendKeyevent(1002);
     }
 
     private void startConnection(String ip, int port, int delay) {
@@ -487,6 +509,14 @@ public class Scrcpy extends Service {
                     } finally {
                         // event = null;
                     }
+                }
+
+                if (suspendStream) {
+                    try {
+                        Thread.sleep(SUSPEND_SLEEP_MS);
+                    } catch (InterruptedException ignore) {
+                    }
+                    continue;
                 }
 
                 if (mediaInputStream.available() > 0) {
