@@ -1,1 +1,0 @@
-mirror display and touch control between Android devices
