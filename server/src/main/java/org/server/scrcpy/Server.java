@@ -93,6 +93,9 @@ public final class Server {
             }
         });
 
+        // 注意：不在服务端进程内杀死旧进程，因为可能会杀死自己
+        // 杀进程的逻辑已经移到客户端 SendCommands 中执行
+
         // Write a marker as early as possible to confirm the process started
         try {
             Process startedCmd = Runtime.getRuntime().exec(new String[]{"sh", "-c", "echo started >/data/local/tmp/scrcpy.started"});

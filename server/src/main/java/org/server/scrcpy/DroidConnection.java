@@ -5,6 +5,7 @@ import java.io.Closeable;
 import java.io.DataInputStream;
 import java.io.IOException;
 import java.io.OutputStream;
+import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 
@@ -25,9 +26,66 @@ public final class DroidConnection implements Closeable {
         this.controlInputStream = new DataInputStream(controlSocket.getInputStream());
     }
 
+    /**
+     * 创建一个可重用地址的 ServerSocket
+     */
+    private static ServerSocket createServerSocket(int port) throws IOException {
+        ServerSocket serverSocket = new ServerSocket();
+        serverSocket.setReuseAddress(true);
+        serverSocket.bind(new InetSocketAddress(port));
+        return serverSocket;
+    }
+
     public static DroidConnection open(String ip) throws IOException {
-        ServerSocket mediaServer = new ServerSocket(MEDIA_PORT);
-        ServerSocket controlServer = new ServerSocket(CONTROL_PORT);
+        ServerSocket mediaServer = null;
+        ServerSocket controlServer = null;
+        int retryCount = 5;  // 增加重试次数
+        IOException lastException = null;
+        
+        while (retryCount > 0) {
+            try {
+                mediaServer = createServerSocket(MEDIA_PORT);
+                controlServer = createServerSocket(CONTROL_PORT);
+                break;  // 成功创建，跳出循环
+            } catch (IOException e) {
+                lastException = e;
+                Ln.w("Failed to bind ports, retrying... (" + retryCount + " attempts left): " + e.getMessage());
+                // 关闭可能已经创建的 socket
+                if (mediaServer != null) {
+                    try { mediaServer.close(); } catch (IOException ignore) {}
+                    mediaServer = null;
+                }
+                if (controlServer != null) {
+                    try { controlServer.close(); } catch (IOException ignore) {}
+                    controlServer = null;
+                }
+                
+                // 尝试杀死占用端口的进程（在服务端执行，但不杀死自己）
+                if (retryCount == 5) {  // 只在第一次重试时尝试
+                    try {
+                        int myPid = android.os.Process.myPid();
+                        String killCmd = "for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do " +
+                                "if [ \"$pid\" != \"" + myPid + "\" ]; then " +
+                                "  if cat /proc/$pid/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q 'org.server.scrcpy'; then " +
+                                "    kill -9 $pid 2>/dev/null; " +
+                                "  fi; " +
+                                "fi; " +
+                                "done";
+                        Runtime.getRuntime().exec(new String[]{"sh", "-c", killCmd}).waitFor();
+                    } catch (Exception ignore) {}
+                }
+                
+                try {
+                    Thread.sleep(1000);  // 增加等待时间
+                } catch (InterruptedException ignore) {}
+                retryCount--;
+            }
+        }
+        
+        if (mediaServer == null || controlServer == null) {
+            throw new IOException("Failed to bind ports after retries", lastException);
+        }
+        
         try {
             writeReadyMarker();
             Socket media = mediaServer.accept();

@@ -109,6 +109,39 @@ public class SendCommands {
             return;
         }
 
+        // 先杀死可能存在的旧 scrcpy server 进程，避免端口占用 (address used) 问题
+        Log.i("Scrcpy", "Killing old scrcpy server process if exists...");
+        // 使用多种兼容的方式杀死旧进程，分步执行以确保生效
+        // 步骤1：使用 pkill
+        App.adbCmd("-s", targetDevice, "shell", "pkill", "-9", "-f", "org.server.scrcpy");
+        App.adbCmd("-s", targetDevice, "shell", "pkill", "-9", "-f", "scrcpy-server");
+        
+        // 步骤2：查找并杀死 app_process 中运行的 scrcpy 进程
+        String findAndKillCmd = 
+                "ps -A -o PID,ARGS 2>/dev/null | grep -E 'app_process.*scrcpy' | grep -v grep | while read pid rest; do kill -9 $pid 2>/dev/null; done; " +
+                "ps -o PID,ARGS 2>/dev/null | grep -E 'app_process.*scrcpy' | grep -v grep | while read pid rest; do kill -9 $pid 2>/dev/null; done; " +
+                "ps 2>/dev/null | grep -E 'app_process.*scrcpy' | grep -v grep | while read line; do echo $line | awk '{print $2}' | xargs kill -9 2>/dev/null; done";
+        App.adbCmd("-s", targetDevice, "shell", "sh", "-c", findAndKillCmd);
+        
+        // 步骤3：直接通过 /proc 查找并杀死进程（最兼容的方式）
+        String procKillCmd = 
+                "for pid in $(ls /proc 2>/dev/null | grep -E '^[0-9]+$'); do " +
+                "  if cat /proc/$pid/cmdline 2>/dev/null | tr '\\0' ' ' | grep -q 'org.server.scrcpy'; then " +
+                "    kill -9 $pid 2>/dev/null; " +
+                "  fi; " +
+                "done";
+        App.adbCmd("-s", targetDevice, "shell", "sh", "-c", procKillCmd);
+        
+        // 等待进程完全退出，端口释放
+        try {
+            Thread.sleep(1000);
+        } catch (InterruptedException ignored) {
+        }
+        
+        String killRet = App.adbCmd("-s", targetDevice, "shell", "sh", "-c", 
+                "ps -A 2>/dev/null | grep -E 'scrcpy|app_process.*Server' | grep -v grep || echo 'No scrcpy process found'");
+        Log.i("Scrcpy", "Kill old process result: " + killRet);
+
         // 清理旧的标记与日志，避免误判
         App.adbCmd("-s", targetDevice, "shell", "rm", "-f",
                 "/data/local/tmp/scrcpy.ready",

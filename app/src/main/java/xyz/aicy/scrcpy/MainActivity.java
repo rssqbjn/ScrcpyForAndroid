@@ -70,6 +70,8 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
     // 如果 pause 切换到后台，断开后，自动重连
     // 该状态禁止保存恢复
     private boolean resumeScrcpy = false;
+    // 是否正在连接中（用于返回手势取消连接）
+    private volatile boolean isConnecting = false;
     SensorManager sensorManager;
     private SendCommands sendCommands;
     private int videoBitrate;
@@ -104,19 +106,25 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             serviceBound = true;
             if (first_time) {
                 if (!Progress.isShowing()) {
-                    Progress.showDialog(MainActivity.this, getString(R.string.please_wait));
+                    isConnecting = true;
+                    Progress.showDialog(MainActivity.this, getString(R.string.please_wait), "", false, MainActivity.this::cancelConnection);
                 }
                 boolean audioEnabled = PreUtils.get(context, Constant.CONTROL_AUDIO, true);
                 scrcpy.start(surface, Scrcpy.LOCAL_IP + ":" + Scrcpy.LOCAL_FORWART_PORT,
                         screenHeight, screenWidth, delayControl, audioEnabled);
                 ThreadUtils.workPost(() -> {
                     int count = 50;
-                    while (count > 0 && !scrcpy.check_socket_connection()) {
+                    while (count > 0 && !scrcpy.check_socket_connection() && isConnecting) {
                         count--;
                         SystemClock.sleep(100);
                     }
+                    // 如果被取消了，直接返回
+                    if (!isConnecting) {
+                        return;
+                    }
                     int finalCount = count;
                     ThreadUtils.post(() -> {
+                        isConnecting = false;
                         Progress.closeDialog();
                         if (finalCount == 0) {
                             if (serviceBound) {
@@ -663,6 +671,9 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
 
     @SuppressLint("ClickableViewAccessibility")
     private void start_screen_copy_magic() {
+        // 连接阶段结束
+        isConnecting = false;
+        Progress.closeDialog();
         setContentView(R.layout.surface);
         final View decorView = getWindow().getDecorView();
         decorView.setSystemUiVisibility(
@@ -814,6 +825,12 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
 
     @Override
     public void onBackPressed() {
+        // 如果正在连接中，直接取消连接
+        if (isConnecting) {
+            cancelConnection();
+            return;
+        }
+        
         if (timestamp == 0) {
             if (serviceBound) {
                 timestamp = SystemClock.uptimeMillis();
@@ -834,6 +851,23 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                 }
             }
             timestamp = 0;
+        }
+    }
+
+    /**
+     * 取消正在进行的连接
+     */
+    private void cancelConnection() {
+        isConnecting = false;
+        Progress.closeDialog();
+        Toast.makeText(context, R.string.connection_cancelled, Toast.LENGTH_SHORT).show();
+        // 如果已经绑定了服务，需要断开
+        if (serviceBound) {
+            showMainView(true);
+            first_time = true;
+        } else if (headlessMode) {
+            // 如果是无头模式且服务还未绑定，直接退出
+            finishAndRemoveTask();
         }
     }
 
@@ -925,8 +959,13 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
             int serverPort = Integer.parseInt(serverInfo[1]);
             int localForwardPort = Scrcpy.LOCAL_FORWART_PORT;
 
-            Progress.showDialog(MainActivity.this, getString(R.string.please_wait));
+            isConnecting = true;
+            Progress.showDialog(MainActivity.this, getString(R.string.please_wait), "", false, this::cancelConnection);
             ThreadUtils.workPost(() -> {
+                // 检查是否已被取消
+                if (!isConnecting) {
+                    return;
+                }
                 AssetManager assetManager = getAssets();
                 Log.d("Scrcpy", "File scrcpy-server.jar try write");
                 InputStream input_Stream = null;
@@ -939,6 +978,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                     File scrcpyDir = context.getExternalFilesDir("scrcpy");
                     if (scrcpyDir == null) {
                         Log.e("Scrcpy", "Failed to get external files directory");
+                        isConnecting = false;
                         ThreadUtils.post(Progress::closeDialog);
                         Toast.makeText(context, "Failed to access storage", Toast.LENGTH_SHORT).show();
                         connectExitExt();
@@ -948,6 +988,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                     if (!scrcpyDir.exists()) {
                         if (!scrcpyDir.mkdirs()) {
                             Log.e("Scrcpy", "Failed to create directory: " + scrcpyDir.getAbsolutePath());
+                            isConnecting = false;
                             ThreadUtils.post(Progress::closeDialog);
                             Toast.makeText(context, "Failed to create directory", Toast.LENGTH_SHORT).show();
                             connectExitExt();
@@ -966,6 +1007,7 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                     // fileBase64 = Base64.encode(buffer, 2);
                 } catch (IOException e) {
                     Log.e("Scrcpy", "File scrcpy-server.jar write failed: " + e.getMessage(), e);
+                    isConnecting = false;
                     ThreadUtils.post(Progress::closeDialog);
                     Toast.makeText(context, "Failed to extract server file: " + e.getMessage(), Toast.LENGTH_LONG).show();
                     connectExitExt();
@@ -982,20 +1024,29 @@ public class MainActivity extends Activity implements Scrcpy.ServiceCallbacks, S
                         Log.e("Scrcpy", "Error closing streams: " + e.getMessage());
                     }
                 }
+                // 检查是否已被取消
+                if (!isConnecting) {
+                    return;
+                }
                 boolean audioEnabled = PreUtils.get(context, Constant.CONTROL_AUDIO, true);
                 if (sendCommands.SendAdbCommands(context, serverHost,
                         serverPort,
                         localForwardPort,
                         Scrcpy.LOCAL_IP,
                         videoBitrate, Math.max(screenHeight, screenWidth), audioEnabled) == 0) {
+                    // 检查是否已被取消
+                    if (!isConnecting) {
+                        return;
+                    }
                     ThreadUtils.post(() -> {
-                        if (!MainActivity.this.isFinishing()) {
+                        if (!MainActivity.this.isFinishing() && isConnecting) {
                             // 进入主线程
                             Log.e("Scrcpy: ", "from startButton");
                             start_screen_copy_magic();
                         }
                     });
                 } else {
+                    isConnecting = false;
                     ThreadUtils.post(Progress::closeDialog);
                     Toast.makeText(context, "Network OR ADB connection failed", Toast.LENGTH_SHORT).show();
                     connectExitExt();

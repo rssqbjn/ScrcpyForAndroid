@@ -25,6 +25,7 @@
 
     <string name="disconnect">Disconnect</string>
     <string name="disconnect_ask">The connection is detected to be disconnected, please exit and reconnect</string>
+    <string name="connection_cancelled">Connection cancelled</string>
 
     <string name="need_register">Registration required</string>
 

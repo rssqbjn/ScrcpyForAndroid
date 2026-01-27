@@ -21,6 +21,7 @@
   <string name="connect_faild_ask">接続を再試行しますか？</string>
   <string name="disconnect">切断</string>
   <string name="disconnect_ask">接続が切断されたことを検出しました。終了して再接続してください。</string>
+  <string name="connection_cancelled">接続がキャンセルされました</string>
   <string name="need_register">登録が必要です</string>
   <string-array name="options_resolution_values">
     <item>1920x1080</item>

@@ -21,4 +21,18 @@
         <item name="android:textColor">@color/white</item>
         <item name="android:gravity">center</item>
     </style>
+
+    <!-- 美化的进度对话框样式 -->
+    <style name="ProgressDialogTheme" parent="android:Theme.DeviceDefault.Light.Dialog">
+        <item name="android:windowBackground">@drawable/dialog_rounded_bg</item>
+        <item name="android:windowIsFloating">true</item>
+        <item name="android:windowContentOverlay">@null</item>
+        <item name="android:windowTitleStyle">@null</item>
+        <item name="android:windowAnimationStyle">@android:style/Animation.Dialog</item>
+        <item name="android:windowSoftInputMode">stateUnspecified|adjustPan</item>
+        <item name="android:backgroundDimEnabled">true</item>
+        <item name="android:backgroundDimAmount">0.4</item>
+        <item name="android:windowMinWidthMajor">45%</item>
+        <item name="android:windowMinWidthMinor">75%</item>
+    </style>
 </resources>

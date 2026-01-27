@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    
+    <!-- 半透明深色背景，配合白色文字和毛玻璃效果 -->
+    <solid android:color="#B3000000" />
+    
+    <!-- 圆角 -->
+    <corners android:radius="20dp" />
+    
+</shape>
